@@ -1,0 +1,276 @@
+:root {
+  --paper: #fffdf8;
+  --paper-deep: #f4ecdd;
+  --ink: #2f2417;
+  --muted: #695847;
+  --accent: #7f4721;
+  --accent-soft: #efe2cf;
+  --olive: #5f6e4c;
+  --line: rgba(68, 44, 21, 0.12);
+  --shadow: 0 20px 50px rgba(52, 33, 15, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  color: var(--ink);
+  background: linear-gradient(180deg, #f7f1e4 0%, #efe4d1 100%);
+}
+
+.softcopy-shell {
+  width: min(1040px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.5rem 0 3rem;
+}
+
+.softcopy-hero,
+.intro-panel,
+.foundation-grid,
+.week-header,
+.day-list {
+  display: grid;
+}
+
+.softcopy-hero,
+.intro-panel article,
+.foundation-card,
+.week-block,
+.day-card {
+  background: rgba(255, 252, 246, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow);
+}
+
+.softcopy-hero {
+  grid-template-columns: minmax(0, 1.4fr) auto;
+  gap: 1rem;
+  align-items: end;
+  padding: 1.5rem;
+  border-radius: 28px;
+}
+
+.eyebrow,
+.day-number,
+.verse,
+.meta-card span,
+.detail-block strong {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.eyebrow,
+.day-number,
+.detail-block strong {
+  color: var(--accent);
+}
+
+h1,
+h2,
+h3,
+.meta-card strong {
+  margin: 0;
+  font-family: "Cormorant Garamond", serif;
+}
+
+h1 {
+  font-size: clamp(2.6rem, 6vw, 4.8rem);
+  line-height: 0.95;
+  margin: 0.4rem 0 0.8rem;
+}
+
+h2 {
+  font-size: clamp(2rem, 3vw, 2.9rem);
+  line-height: 0.97;
+  margin: 0.25rem 0 0.55rem;
+}
+
+h3 {
+  font-size: 1.55rem;
+  line-height: 1.02;
+}
+
+p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.hero-copy {
+  max-width: 60ch;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem 1.25rem;
+  border-radius: 999px;
+  border: 0;
+  text-decoration: none;
+  background: var(--ink);
+  color: #fffaf2;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button.ghost {
+  background: rgba(255, 250, 242, 0.85);
+  color: var(--ink);
+  border: 1px solid rgba(68, 44, 21, 0.1);
+}
+
+.intro-panel {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.intro-panel article,
+.foundation-card,
+.week-block,
+.day-card {
+  border-radius: 24px;
+}
+
+.intro-panel article {
+  padding: 1.2rem;
+}
+
+.intro-panel span {
+  display: block;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2.4rem;
+  color: var(--ink);
+}
+
+.intro-panel strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.foundations-block,
+.week-block {
+  margin-top: 1.5rem;
+}
+
+.foundation-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.foundation-card {
+  padding: 1.25rem;
+}
+
+.week-block {
+  padding: 1.25rem;
+}
+
+.week-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.meta-card {
+  min-width: 140px;
+  padding: 1rem;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(248, 240, 228, 0.96), rgba(233, 239, 223, 0.9));
+  border: 1px solid rgba(68, 44, 21, 0.08);
+}
+
+.meta-card strong {
+  display: block;
+  font-size: 1.45rem;
+}
+
+.meta-card span {
+  color: var(--olive);
+}
+
+.day-list {
+  gap: 0.9rem;
+}
+
+.day-card {
+  padding: 1rem 1.1rem;
+  break-inside: avoid;
+}
+
+.day-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.verse {
+  color: var(--olive);
+  font-style: italic;
+}
+
+.detail-block {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 780px) {
+  .softcopy-hero,
+  .week-header,
+  .intro-panel,
+  .foundation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .day-top {
+    flex-direction: column;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0.5in;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .softcopy-shell {
+    width: 100%;
+    padding: 0;
+  }
+
+  .no-print {
+    display: none;
+  }
+
+  .softcopy-hero,
+  .intro-panel article,
+  .foundation-card,
+  .week-block,
+  .day-card {
+    box-shadow: none;
+    border: 1px solid #ddd2bf;
+    background: #fff;
+  }
+}

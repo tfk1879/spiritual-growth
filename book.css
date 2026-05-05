@@ -1,0 +1,361 @@
+:root {
+  --paper: #fffdf8;
+  --paper-soft: #f5efe2;
+  --ink: #2b2118;
+  --muted: #6f604f;
+  --line: rgba(70, 52, 31, 0.14);
+  --accent: #8c5c24;
+  --accent-deep: #5d3a12;
+  --olive: #60704f;
+  --shadow: 0 20px 45px rgba(57, 39, 20, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #f5efe3 0%, #eadfca 100%);
+  color: var(--ink);
+  font-family: "Source Sans 3", sans-serif;
+}
+
+.book-shell {
+  width: min(1080px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.5rem 0 4rem;
+}
+
+.book-controls,
+.front-card,
+.chapter-card,
+.reference-list,
+.question-list,
+.toc-columns,
+.week-banner-meta {
+  display: grid;
+}
+
+.book-controls,
+.front-card,
+.chapter-card,
+.toc-card,
+.week-banner {
+  background: rgba(255, 253, 248, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: var(--shadow);
+}
+
+.book-controls {
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: end;
+  padding: 1.4rem;
+  border-radius: 28px;
+}
+
+.eyebrow,
+.chapter-label,
+.scripture-ref,
+.reference-list li::marker,
+.question-list li::marker {
+  color: var(--accent);
+}
+
+.eyebrow,
+.chapter-label {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: "Cormorant Garamond", serif;
+}
+
+h1 {
+  font-size: clamp(2.8rem, 6vw, 4.8rem);
+  line-height: 0.95;
+  margin-top: 0.35rem;
+}
+
+h2 {
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 0.98;
+}
+
+h3 {
+  font-size: 1.85rem;
+  line-height: 1.05;
+}
+
+h4 {
+  font-size: 1.3rem;
+}
+
+p,
+li {
+  font-size: 1.03rem;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.book-controls p {
+  max-width: 64ch;
+  margin: 0.6rem 0 0;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0.9rem 1.25rem;
+  border-radius: 999px;
+  border: 0;
+  background: #2b2118;
+  color: #fffaf4;
+  text-decoration: none;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button.ghost {
+  background: rgba(255, 250, 242, 0.9);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.manuscript-stack {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.front-card,
+.chapter-card,
+.toc-card,
+.week-banner {
+  border-radius: 28px;
+}
+
+.front-card,
+.chapter-card,
+.toc-card {
+  padding: 1.5rem;
+}
+
+.front-card {
+  gap: 1rem;
+}
+
+.title-page {
+  min-height: 72vh;
+  align-items: center;
+  text-align: center;
+  background:
+    radial-gradient(circle at top, rgba(140, 92, 36, 0.08), transparent 36%),
+    linear-gradient(180deg, #fffdf8 0%, #f3ebdb 100%);
+}
+
+.title-page .subtitle {
+  max-width: 38rem;
+  margin: 0 auto;
+}
+
+.title-page .author-line {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+.copyright-page {
+  min-height: 48vh;
+  align-content: end;
+}
+
+.copyright-page p {
+  max-width: 42rem;
+}
+
+.toc-card {
+  background: linear-gradient(180deg, #fffdf8 0%, #f7f1e5 100%);
+}
+
+.toc-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.toc-columns ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.toc-columns li {
+  margin-bottom: 0.45rem;
+}
+
+.week-banner {
+  padding: 1.4rem 1.5rem;
+  background: linear-gradient(180deg, #fbf8f0 0%, #efe3cf 100%);
+}
+
+.week-banner p {
+  margin-top: 0.55rem;
+}
+
+.week-banner-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.week-banner-meta article {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+}
+
+.chapter-card {
+  gap: 1rem;
+  break-inside: avoid;
+}
+
+.chapter-head {
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.chapter-head .scripture-ref {
+  display: inline-block;
+  margin-top: 0.45rem;
+}
+
+.scripture-ref {
+  font-style: italic;
+}
+
+.chapter-body {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.reference-box,
+.question-box,
+.prayer-box {
+  padding: 1rem 1.1rem;
+  border-radius: 20px;
+  background: var(--paper-soft);
+  border: 1px solid var(--line);
+}
+
+.reference-box h4,
+.question-box h4,
+.prayer-box h4 {
+  margin-bottom: 0.45rem;
+}
+
+.reference-list,
+.question-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  gap: 0.3rem;
+}
+
+.closing-note {
+  text-align: center;
+}
+
+@media (max-width: 840px) {
+  .book-controls,
+  .toc-columns,
+  .week-banner-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0.72in 0.68in 0.78in;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .book-shell {
+    width: 100%;
+    padding: 0;
+  }
+
+  .no-print {
+    display: none;
+  }
+
+  .book-controls,
+  .front-card,
+  .chapter-card,
+  .toc-card,
+  .week-banner {
+    background: #fff;
+    box-shadow: none;
+    border: 1px solid #dcccbb;
+  }
+
+  .title-page,
+  .copyright-page,
+  .toc-card,
+  .week-banner,
+  .chapter-card {
+    break-before: page;
+  }
+
+  .title-page {
+    min-height: auto;
+    padding-top: 2.2in;
+    padding-bottom: 2.2in;
+  }
+
+  .copyright-page {
+    min-height: auto;
+    padding-top: 4in;
+  }
+
+  p,
+  li {
+    font-size: 12.4pt;
+    line-height: 1.75;
+  }
+
+  h1 {
+    font-size: 28pt;
+  }
+
+  h2 {
+    font-size: 22pt;
+  }
+
+  h3 {
+    font-size: 18pt;
+  }
+
+  .chapter-card {
+    padding: 0.95rem 1.05rem 1.1rem;
+  }
+}

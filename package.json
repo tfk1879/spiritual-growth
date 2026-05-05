@@ -1,0 +1,8 @@
+{
+  "name": "spiritual-growth",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "node dev-server.js"
+  }
+}
