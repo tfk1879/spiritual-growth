@@ -79,7 +79,7 @@ function renderLockedPage() {
         </nav>
 
         <div class="header-actions">
-          <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">DM</button>
+          <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode"></button>
           <a class="button button-secondary" href="signup.html">Sign Up</a>
         </div>
       </header>
@@ -137,7 +137,7 @@ function renderStudyPage({ user, completedDays }) {
           </div>
 
           <div class="header-actions">
-            <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">DM</button>
+            <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode"></button>
             <a class="button button-secondary" href="studies.html">Studies</a>
             ${user ? `<a class="button" href="dashboard.html">Dashboard</a>` : `<a class="button" href="signup.html">Sign Up</a>`}
           </div>

@@ -22,7 +22,7 @@ async function initAuthPage() {
             </span>
           </a>
 
-          <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">DM</button>
+          <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode"></button>
         </div>
 
         <div class="auth-heading">
@@ -178,4 +178,19 @@ async function initAuthPage() {
   initThemeToggle();
 }
 
-initAuthPage();
+initAuthPage().catch((error) => {
+  console.error("Unable to initialize auth page.", error);
+  root.innerHTML = `
+    <div class="auth-layout">
+      <section class="auth-panel">
+        <div class="auth-heading">
+          <p class="eyebrow">Login</p>
+          <h1>Login is temporarily unavailable.</h1>
+          <p>Please refresh the page. If this continues, check your network connection and Firebase settings.</p>
+        </div>
+        <p class="form-error" role="alert">The login screen could not finish loading.</p>
+        <a class="button" href="login.html">Reload Login</a>
+      </section>
+    </div>
+  `;
+});

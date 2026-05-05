@@ -39,14 +39,15 @@ function firebaseSetupError() {
 
 function publicUser(firebaseUser, profile = {}) {
   if (!firebaseUser) return null;
+  const userProfile = profile ?? {};
 
   return {
     id: firebaseUser.uid,
-    name: profile.name || firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Student",
+    name: userProfile.name || firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Student",
     email: firebaseUser.email,
-    phone: profile.phone || "",
-    joinedAt: profile.joinedAt || "",
-    accessPlan: profile.accessPlan || "member"
+    phone: userProfile.phone || "",
+    joinedAt: userProfile.joinedAt || "",
+    accessPlan: userProfile.accessPlan || "member"
   };
 }
 
@@ -77,8 +78,13 @@ export async function getCurrentUser() {
 export async function getUserProfile(uid) {
   if (!isFirebaseConfigured() || !uid) return null;
 
-  const snapshot = await getDoc(doc(db, "users", uid));
-  return snapshot.exists() ? snapshot.data() : null;
+  try {
+    const snapshot = await getDoc(doc(db, "users", uid));
+    return snapshot.exists() ? snapshot.data() : null;
+  } catch (error) {
+    console.warn("Unable to read user profile from Firestore.", error);
+    return null;
+  }
 }
 
 export async function registerUser({ name, email, password, phone = "" }) {
@@ -91,16 +97,22 @@ export async function registerUser({ name, email, password, phone = "" }) {
     const cleanPhone = String(phone).trim();
 
     await updateProfile(user, { displayName: cleanName });
-    await setDoc(doc(db, "users", user.uid), {
-      name: cleanName,
-      email: user.email,
-      phone: cleanPhone,
-      accessPlan: "member",
-      hardcopyInterest: false,
-      completedDays: [],
-      createdAt: serverTimestamp(),
-      joinedAt: new Date().toISOString()
-    });
+    const joinedAt = new Date().toISOString();
+
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        name: cleanName,
+        email: user.email,
+        phone: cleanPhone,
+        accessPlan: "member",
+        hardcopyInterest: false,
+        completedDays: [],
+        createdAt: serverTimestamp(),
+        joinedAt
+      });
+    } catch (error) {
+      console.warn("Account created, but Firestore profile was not saved.", error);
+    }
 
     return {
       ok: true,
@@ -108,7 +120,7 @@ export async function registerUser({ name, email, password, phone = "" }) {
         name: cleanName,
         phone: cleanPhone,
         accessPlan: "member",
-        joinedAt: new Date().toISOString()
+        joinedAt
       })
     };
   } catch (error) {
@@ -158,7 +170,11 @@ export async function saveCompletedDays(days) {
 
   const user = await getCurrentUser();
   if (user) {
-    await setDoc(doc(db, "users", user.id), { completedDays: uniqueDays }, { merge: true });
+    try {
+      await setDoc(doc(db, "users", user.id), { completedDays: uniqueDays }, { merge: true });
+    } catch (error) {
+      console.warn("Unable to save completed days to Firestore.", error);
+    }
   }
 }
 
@@ -187,6 +203,8 @@ export function getAuthErrorMessage(error) {
   if (code.includes("user-not-found") || code.includes("invalid-credential")) return "The email or password is incorrect.";
   if (code.includes("wrong-password")) return "The password is incorrect.";
   if (code.includes("network-request-failed")) return "Network error. Please check your connection and try again.";
+  if (code.includes("operation-not-allowed")) return "Email/password login is not enabled in Firebase Authentication.";
+  if (code.includes("unauthorized-domain")) return "This domain is not authorized in Firebase Authentication settings.";
 
   return "Authentication failed. Please try again.";
 }
@@ -198,14 +216,47 @@ export function applySavedTheme() {
   }
 }
 
+function renderThemeToggle(button) {
+  const isDark = document.documentElement.dataset.theme === "dark";
+  const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+
+  button.setAttribute("aria-label", label);
+  button.setAttribute("title", label);
+  button.innerHTML = isDark
+    ? `
+      <svg class="theme-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2"></path>
+        <path d="M12 20v2"></path>
+        <path d="m4.93 4.93 1.41 1.41"></path>
+        <path d="m17.66 17.66 1.41 1.41"></path>
+        <path d="M2 12h2"></path>
+        <path d="M20 12h2"></path>
+        <path d="m6.34 17.66-1.41 1.41"></path>
+        <path d="m19.07 4.93-1.41 1.41"></path>
+      </svg>
+    `
+    : `
+      <svg class="theme-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M20.99 11.64A8.5 8.5 0 1 1 12.36 3a6.5 6.5 0 0 0 8.63 8.64Z"></path>
+      </svg>
+    `;
+}
+
+function renderThemeToggles() {
+  document.querySelectorAll("[data-theme-toggle]").forEach(renderThemeToggle);
+}
+
 export function initThemeToggle() {
   applySavedTheme();
+  renderThemeToggles();
 
   document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
       const isDark = document.documentElement.dataset.theme === "dark";
       document.documentElement.dataset.theme = isDark ? "" : "dark";
       localStorage.setItem(THEME_KEY, isDark ? "light" : "dark");
+      renderThemeToggles();
     });
   });
 }

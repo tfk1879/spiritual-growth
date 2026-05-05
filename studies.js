@@ -80,7 +80,7 @@ async function initStudiesPage() {
         </nav>
 
         <div class="header-actions">
-          <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">DM</button>
+          <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode"></button>
           ${
             user
               ? `<a class="button button-secondary" href="dashboard.html">Dashboard</a>`

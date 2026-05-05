@@ -73,7 +73,7 @@ async function initDashboard() {
         </nav>
 
         <div class="header-actions">
-          <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">DM</button>
+          <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode"></button>
           <button class="button button-secondary" type="button" id="logout-button">Logout</button>
         </div>
       </header>
