@@ -47,6 +47,12 @@ function publicUser(firebaseUser, profile = {}) {
     name: userProfile.name || firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Student",
     email: firebaseUser.email,
     phone: userProfile.phone || "",
+    decisionType: userProfile.decisionType || "",
+    occupation: userProfile.occupation || "",
+    officeAddress: userProfile.officeAddress || "",
+    homeAddress: userProfile.homeAddress || "",
+    nearestBusStop: userProfile.nearestBusStop || "",
+    prayerRequest: userProfile.prayerRequest || "",
     joinedAt: userProfile.joinedAt || "",
     accessPlan: userProfile.accessPlan || "member",
     role: userProfile.role || "student",
@@ -91,7 +97,18 @@ export async function getCurrentUser() {
   return publicUser(firebaseUser, await getUserProfile(firebaseUser.uid));
 }
 
-export async function registerUser({ name, email, password, phone = "" }) {
+export async function registerUser({
+  name,
+  email,
+  password,
+  phone = "",
+  decisionType = "",
+  occupation = "",
+  officeAddress = "",
+  homeAddress = "",
+  nearestBusStop = "",
+  prayerRequest = ""
+}) {
   try {
     const credential = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
     const cleanName = String(name).trim();
@@ -101,6 +118,14 @@ export async function registerUser({ name, email, password, phone = "" }) {
       name: cleanName,
       email: credential.user.email,
       phone: String(phone).trim(),
+      decisionType: String(decisionType).trim(),
+      occupation: String(occupation).trim(),
+      officeAddress: String(officeAddress).trim(),
+      homeAddress: String(homeAddress).trim(),
+      nearestBusStop: String(nearestBusStop).trim(),
+      prayerRequest: String(prayerRequest).trim(),
+      discipleStatus: "new",
+      followUpStatus: "needed",
       role: "student",
       accessPlan: "member",
       hardcopyInterest: false,
@@ -156,5 +181,8 @@ export async function listUsersForAdmin() {
 }
 
 export async function updateUserProfile(uid, data) {
-  await updateDoc(doc(db, "users", uid), data);
+  await updateDoc(doc(db, "users", uid), {
+    ...data,
+    updatedAt: serverTimestamp()
+  });
 }

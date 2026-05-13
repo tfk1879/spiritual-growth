@@ -14,7 +14,8 @@ import {
   logoutUser,
   registerUser,
   saveCompletedDays,
-  subscribeToAuth
+  subscribeToAuth,
+  updateUserProfile
 } from "./services.js";
 
 const weekSlugs = {
@@ -170,6 +171,7 @@ function AuthPage({ mode }) {
   const isSignup = mode === "signup";
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
@@ -180,7 +182,13 @@ function AuthPage({ mode }) {
       name: String(form.get("name") ?? "").trim(),
       email: String(form.get("email") ?? "").trim(),
       password: String(form.get("password") ?? ""),
-      phone: String(form.get("phone") ?? "").trim()
+      phone: String(form.get("phone") ?? "").trim(),
+      decisionType: String(form.get("decisionType") ?? "").trim(),
+      occupation: String(form.get("occupation") ?? "").trim(),
+      officeAddress: String(form.get("officeAddress") ?? "").trim(),
+      homeAddress: String(form.get("homeAddress") ?? "").trim(),
+      nearestBusStop: String(form.get("nearestBusStop") ?? "").trim(),
+      prayerRequest: String(form.get("prayerRequest") ?? "").trim()
     };
 
     if (isSignup && payload.name.length < 2) {
@@ -195,7 +203,7 @@ function AuthPage({ mode }) {
       setBusy(false);
       return;
     }
-    window.location.href = "dashboard.html";
+    window.location.href = result.user?.role === "admin" ? "admin.html" : "dashboard.html";
   }
 
   return (
@@ -217,8 +225,24 @@ function AuthPage({ mode }) {
           <div className="auth-field-grid">
             {isSignup ? <label><span>Full Name</span><input name="name" type="text" autoComplete="name" required /></label> : null}
             <label><span>Email</span><input name="email" type="email" autoComplete="email" required /></label>
-            <label><span>Password</span><input name="password" type="password" minLength="6" autoComplete={isSignup ? "new-password" : "current-password"} required /></label>
-            {isSignup ? <label><span>Phone Number <em>Optional</em></span><input name="phone" type="tel" autoComplete="tel" /></label> : null}
+            <label>
+              <span>Password</span>
+              <span className="password-control">
+                <input name="password" type={showPassword ? "text" : "password"} minLength="6" autoComplete={isSignup ? "new-password" : "current-password"} required />
+                <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
+              </span>
+            </label>
+            {isSignup ? (
+              <>
+                <label><span>Decision</span><select name="decisionType" required><option value="">Select decision</option><option value="accepted-christ">I accept Jesus Christ as my Lord and Saviour</option><option value="rededication">I re-dedicate my life to Jesus Christ</option></select></label>
+                <label><span>Phone Number</span><input name="phone" type="tel" autoComplete="tel" required /></label>
+                <label><span>Occupation <em>Optional</em></span><input name="occupation" type="text" autoComplete="organization-title" /></label>
+                <label><span>Nearest Bus Stop <em>Optional</em></span><input name="nearestBusStop" type="text" /></label>
+                <label className="auth-wide-field"><span>Home Address <em>Optional</em></span><input name="homeAddress" type="text" autoComplete="street-address" /></label>
+                <label className="auth-wide-field"><span>Office Address <em>Optional</em></span><input name="officeAddress" type="text" /></label>
+                <label className="auth-wide-field"><span>Prayer Request <em>Optional</em></span><textarea name="prayerRequest" rows="3" /></label>
+              </>
+            ) : null}
           </div>
           <p className="form-note">{isSignup ? "Your account helps save study progress and continue from your dashboard." : "Use the email and password from signup."}</p>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -416,16 +440,84 @@ function DashboardPage({ user }) {
 function AdminPage({ user }) {
   const [rows, setRows] = useState([]);
   const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [accessFilter, setAccessFilter] = useState("all");
+  const [followUpFilter, setFollowUpFilter] = useState("all");
+  const [hardcopyFilter, setHardcopyFilter] = useState("all");
   const [message, setMessage] = useState("");
+  const [savingId, setSavingId] = useState("");
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
   useEffect(() => {
     if (!user) return;
     if (user.role !== "admin") return;
-    listUsersForAdmin().then(setRows).catch((error) => setMessage(error.message));
+    setLoadingUsers(true);
+    listUsersForAdmin()
+      .then((items) => setRows(items.sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email)))))
+      .catch((error) => setMessage(error.message))
+      .finally(() => setLoadingUsers(false));
   }, [user]);
 
-  const filtered = useMemo(() => rows.filter((row) => `${row.name} ${row.email} ${row.phone}`.toLowerCase().includes(query.toLowerCase())), [rows, query]);
+  async function saveUserField(row, field, value) {
+    setMessage("");
+    setSavingId(row.id);
+    const nextRows = rows.map((item) => (item.id === row.id ? { ...item, [field]: value } : item));
+    setRows(nextRows);
+
+    try {
+      await updateUserProfile(row.id, { [field]: value });
+      setMessage(`Saved ${row.name || row.email}.`);
+    } catch (error) {
+      setRows(rows);
+      setMessage(error.message || "Unable to save this user.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  function exportUsers() {
+    const columns = ["name", "email", "phone", "decisionType", "occupation", "homeAddress", "officeAddress", "nearestBusStop", "prayerRequest", "accessPlan", "role", "followUpStatus", "hardcopyStatus", "completedCount", "joinedAt", "adminNotes"];
+    const values = filtered.map((row) => ({
+      name: row.name || "Student",
+      email: row.email || "",
+      phone: row.phone || "",
+      decisionType: row.decisionType || "",
+      occupation: row.occupation || "",
+      homeAddress: row.homeAddress || "",
+      officeAddress: row.officeAddress || "",
+      nearestBusStop: row.nearestBusStop || "",
+      prayerRequest: row.prayerRequest || "",
+      accessPlan: row.accessPlan || "member",
+      role: row.role || "student",
+      followUpStatus: row.followUpStatus || "none",
+      hardcopyStatus: row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none"),
+      completedCount: row.completedDays?.length ?? 0,
+      joinedAt: row.joinedAt || "",
+      adminNotes: row.adminNotes || ""
+    }));
+    const csv = [columns.join(","), ...values.map((row) => columns.map((column) => `"${String(row[column]).replaceAll('"', '""')}"`).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `spiritual-growth-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const filtered = useMemo(() => rows.filter((row) => {
+    const searchText = `${row.name} ${row.email} ${row.phone} ${row.decisionType} ${row.occupation} ${row.homeAddress} ${row.nearestBusStop} ${row.prayerRequest} ${row.role} ${row.accessPlan} ${row.followUpStatus} ${row.hardcopyStatus}`.toLowerCase();
+    const hardcopyStatus = row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none");
+
+    return searchText.includes(query.toLowerCase())
+      && (roleFilter === "all" || (row.role || "student") === roleFilter)
+      && (accessFilter === "all" || (row.accessPlan || "") === accessFilter)
+      && (followUpFilter === "all" || (row.followUpStatus || "none") === followUpFilter)
+      && (hardcopyFilter === "all" || hardcopyStatus === hardcopyFilter);
+  }), [rows, query, roleFilter, accessFilter, followUpFilter, hardcopyFilter]);
   const completedTotal = rows.reduce((sum, row) => sum + (row.completedDays?.length ?? 0), 0);
+  const needsFollowUp = rows.filter((row) => row.followUpStatus === "needed").length;
+  const hardcopyLeads = rows.filter((row) => row.hardcopyInterest || row.hardcopyStatus === "interested" || row.hardcopyStatus === "ordered").length;
+  const activeStudents = rows.filter((row) => (row.completedDays?.length ?? 0) > 0).length;
 
   if (!user) return <AuthPage mode="login" />;
   if (user.role !== "admin") {
@@ -448,28 +540,101 @@ function AdminPage({ user }) {
         <section className="admin-metrics">
           <article className="progress-card"><Users /><strong>{rows.length}</strong><span>Total users</span></article>
           <article className="progress-card"><strong>{completedTotal}</strong><span>Completed lessons marked</span></article>
-          <article className="progress-card"><strong>{rows.filter((row) => row.accessPlan).length}</strong><span>Members with access</span></article>
+          <article className="progress-card"><strong>{activeStudents}</strong><span>Active students</span></article>
+          <article className="progress-card"><strong>{needsFollowUp}</strong><span>Need follow-up</span></article>
+          <article className="progress-card"><strong>{hardcopyLeads}</strong><span>Hardcopy leads</span></article>
+          <article className="progress-card"><strong>{rows.filter((row) => row.role === "admin").length}</strong><span>Admins</span></article>
+        </section>
+        <section className="admin-action-grid" aria-label="Admin quick actions">
+          <button type="button" onClick={() => { setFollowUpFilter("needed"); setRoleFilter("all"); setAccessFilter("all"); setHardcopyFilter("all"); }}>
+            <strong>Follow up</strong>
+            <span>Show students marked as needing care or contact.</span>
+          </button>
+          <button type="button" onClick={() => { setHardcopyFilter("interested"); setRoleFilter("all"); setAccessFilter("all"); setFollowUpFilter("all"); }}>
+            <strong>Hardcopy list</strong>
+            <span>Find people interested in printed study materials.</span>
+          </button>
+          <button type="button" onClick={() => { setRoleFilter("student"); setAccessFilter(""); setFollowUpFilter("all"); setHardcopyFilter("all"); }}>
+            <strong>No access</strong>
+            <span>Review students who cannot open member studies.</span>
+          </button>
+          <button type="button" onClick={() => { setRoleFilter("all"); setAccessFilter("all"); setFollowUpFilter("all"); setHardcopyFilter("all"); setQuery(""); }}>
+            <strong>All users</strong>
+            <span>Clear every filter and return to the full register.</span>
+          </button>
         </section>
         <section className="admin-panel">
           <div className="admin-toolbar">
             <label className="admin-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search users" /></label>
+            <button className="button button-secondary" type="button" onClick={exportUsers}>Export CSV</button>
           </div>
-          {message ? <p className="form-error">{message}</p> : null}
+          <div className="admin-filters" aria-label="User filters">
+            <label><span>Role</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All roles</option><option value="student">Students</option><option value="admin">Admins</option></select></label>
+            <label><span>Access</span><select value={accessFilter} onChange={(event) => setAccessFilter(event.target.value)}><option value="all">All access</option><option value="">No access</option><option value="member">Member</option><option value="paid">Paid</option><option value="sponsored">Sponsored</option><option value="church-group">Church group</option></select></label>
+            <label><span>Follow-up</span><select value={followUpFilter} onChange={(event) => setFollowUpFilter(event.target.value)}><option value="all">All follow-up</option><option value="none">None</option><option value="needed">Needed</option><option value="contacted">Contacted</option><option value="resolved">Resolved</option></select></label>
+            <label><span>Hardcopy</span><select value={hardcopyFilter} onChange={(event) => setHardcopyFilter(event.target.value)}><option value="all">All hardcopy</option><option value="none">None</option><option value="interested">Interested</option><option value="ordered">Ordered</option><option value="delivered">Delivered</option></select></label>
+          </div>
+          {message ? <p className={message.startsWith("Saved") ? "form-success" : "form-error"}>{message}</p> : null}
+          <p className="admin-result-count">{loadingUsers ? "Loading users..." : `Showing ${filtered.length} of ${rows.length} users`}</p>
           <div className="admin-table-wrap">
             <table className="admin-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Plan</th><th>Role</th><th>Completed</th><th>Joined</th></tr></thead>
+              <thead><tr><th>Name</th><th>Contact</th><th>Decision Card</th><th>Status</th><th>Plan</th><th>Role</th><th>Follow-up</th><th>Hardcopy</th><th>Completed</th><th>Notes</th><th>Joined</th></tr></thead>
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name || "Student"}</td>
-                    <td>{row.email}</td>
-                    <td>{row.phone || "-"}</td>
-                    <td>{row.accessPlan || "member"}</td>
-                    <td>{row.role || "student"}</td>
-                    <td>{row.completedDays?.length ?? 0}</td>
+                    <td><strong>{row.name || "Student"}</strong></td>
+                    <td><span>{row.email}</span><small>{row.phone || "No phone"}</small></td>
+                    <td>
+                      <span>{row.decisionType === "rededication" ? "Re-dedication" : row.decisionType === "accepted-christ" ? "Accepted Christ" : "Not recorded"}</span>
+                      <small>{row.occupation || "No occupation"}</small>
+                      <small>{row.nearestBusStop || "No bus stop"}</small>
+                      {row.prayerRequest ? <small>Prayer: {row.prayerRequest}</small> : null}
+                    </td>
+                    <td>
+                      <span className={`status-pill status-${row.role === "admin" ? "admin" : "student"}`}>{row.role || "student"}</span>
+                      <span className={`status-pill status-${row.followUpStatus === "needed" ? "needed" : "quiet"}`}>{row.followUpStatus || "no follow-up"}</span>
+                    </td>
+                    <td>
+                      <select value={row.accessPlan ?? "member"} disabled={savingId === row.id} onChange={(event) => saveUserField(row, "accessPlan", event.target.value)}>
+                        <option value="">No access</option>
+                        <option value="member">Member</option>
+                        <option value="paid">Paid</option>
+                        <option value="sponsored">Sponsored</option>
+                        <option value="church-group">Church group</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select value={row.role || "student"} disabled={savingId === row.id || row.id === user.id} onChange={(event) => saveUserField(row, "role", event.target.value)}>
+                        <option value="student">Student</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select value={row.followUpStatus || "none"} disabled={savingId === row.id} onChange={(event) => saveUserField(row, "followUpStatus", event.target.value)}>
+                        <option value="none">None</option>
+                        <option value="needed">Needed</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="resolved">Resolved</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select value={row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none")} disabled={savingId === row.id} onChange={(event) => saveUserField(row, "hardcopyStatus", event.target.value)}>
+                        <option value="none">None</option>
+                        <option value="interested">Interested</option>
+                        <option value="ordered">Ordered</option>
+                        <option value="delivered">Delivered</option>
+                      </select>
+                    </td>
+                    <td><strong>{row.completedDays?.length ?? 0}</strong><small>of {days.length}</small></td>
+                    <td>
+                      <textarea value={row.adminNotes || ""} disabled={savingId === row.id} rows="2" onChange={(event) => setRows(rows.map((item) => (item.id === row.id ? { ...item, adminNotes: event.target.value } : item)))} onBlur={(event) => saveUserField(row, "adminNotes", event.target.value)} />
+                    </td>
                     <td>{row.joinedAt ? new Date(row.joinedAt).toLocaleDateString() : "-"}</td>
                   </tr>
                 ))}
+                {!loadingUsers && filtered.length === 0 ? (
+                  <tr><td colSpan="11"><div className="admin-empty">No users match the current filters.</div></td></tr>
+                ) : null}
               </tbody>
             </table>
           </div>
