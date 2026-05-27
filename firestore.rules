@@ -13,17 +13,118 @@ service cloud.firestore {
     function isAdmin() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
+          "admin",
+          "super-admin",
+          "super_admin"
+        ];
+    }
+
+    function isProvinceAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus in ["approved", "active"]
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
+          "province-admin",
+          "assistant-admin",
+          "follow-up-officer",
+          "data-entry-officer"
+        ];
+    }
+
+    function adminProvinceId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.provinceId;
+    }
+
+    function sameProvince() {
+      return isProvinceAdmin()
+        && resource.data.provinceId == adminProvinceId();
+    }
+
+    function hasValidAdminInvite() {
+      return signedIn()
+        && ("invitationId" in request.resource.data)
+        && exists(/databases/$(database)/documents/adminInvitations/$(request.resource.data.invitationId))
+        && get(/databases/$(database)/documents/adminInvitations/$(request.resource.data.invitationId)).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/adminInvitations/$(request.resource.data.invitationId)).data.status == "pending"
+        && get(/databases/$(database)/documents/adminInvitations/$(request.resource.data.invitationId)).data.roleType == request.resource.data.role
+        && get(/databases/$(database)/documents/adminInvitations/$(request.resource.data.invitationId)).data.provinceId == request.resource.data.provinceId;
+    }
+
+    function isPendingAdminRequestCreate() {
+      return request.resource.data.role in ["province-admin", "assistant-admin"]
+        && request.resource.data.accountStatus == "pending"
+        && ("provinceId" in request.resource.data);
     }
 
     match /users/{userId} {
-      allow create: if owns(userId);
-      allow read: if owns(userId) || isAdmin();
+      allow create: if owns(userId)
+        && (
+          (!("role" in request.resource.data) || request.resource.data.role == "student")
+          || hasValidAdminInvite()
+          || isPendingAdminRequestCreate()
+        );
+      allow read: if owns(userId) || isAdmin() || sameProvince();
       allow update: if isAdmin() || (
         owns(userId)
         && !("role" in request.resource.data.diff(resource.data).affectedKeys())
+        && !("provinceId" in request.resource.data.diff(resource.data).affectedKeys())
+        && !("accessPlan" in request.resource.data.diff(resource.data).affectedKeys())
+      ) || (
+        sameProvince()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["role", "provinceId", "accessPlan"])
       );
       allow delete: if isAdmin();
+    }
+
+    match /provinces/{provinceId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /adminInvitations/{invitationId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        signedIn()
+        && resource.data.email == request.auth.token.email
+        && resource.data.status == "pending"
+        && request.resource.data.status == "accepted"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "activatedUserId", "activatedAt", "updatedAt"])
+      );
+    }
+
+    match /admins/{adminId} {
+      allow read: if isAdmin() || owns(adminId) || (
+        isProvinceAdmin()
+        && resource.data.provinceId == adminProvinceId()
+      );
+      allow create: if isAdmin() || (
+        owns(adminId)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status in ["pending", "active"]
+      );
+      allow update: if isAdmin() || (
+        owns(adminId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["lastLogin"])
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /adminRequests/{requestId} {
+      allow create: if owns(requestId)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status == "pending";
+      allow read: if isAdmin() || owns(requestId);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /activityLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if false;
     }
   }
 }

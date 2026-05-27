@@ -1,20 +1,32 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Moon, Search, ShieldCheck, Sun, Users } from "lucide-react";
+import { BookOpen, Building2, Calendar, Heart, MapPin, Moon, Search, ShieldCheck, Sun, UserCheck, Users } from "lucide-react";
 import "../styles.css";
 import portraitUrl from "../assets/developer-portrait.jpeg";
 import { days, foundationPoints, weekIntros, weekOrder, weekQuotes } from "../guide-data.js";
+import { ondoProvinces } from "./provinces.js";
 import {
   auth,
   canAccessPaidStudies,
+  canUseAdminTools,
+  createAdminInvitation,
+  createProvince,
+  decideAdminRequest,
+  deleteProvince,
+  ensureDefaultOndoProvinces,
   getCompletedDays,
+  getAdminInvitation,
   getCurrentUser,
+  isSuperAdmin,
+  listAdminRequests,
+  listProvinces,
   listUsersForAdmin,
   loginUser,
   logoutUser,
   registerUser,
   saveCompletedDays,
   subscribeToAuth,
+  updateProvince,
   updateUserProfile
 } from "./services.js";
 
@@ -33,6 +45,30 @@ const slugWeeks = {
   "/week-4.html": "Week 4",
   "/bonus-week.html": "Bonus"
 };
+
+const dailyWords = [
+  { text: "The Lord is my shepherd; I shall not want.", reference: "Psalm 23:1" },
+  { text: "Therefore if any man be in Christ, he is a new creature.", reference: "2 Corinthians 5:17" },
+  { text: "I can do all things through Christ which strengtheneth me.", reference: "Philippians 4:13" },
+  { text: "For I know the plans I have for you, declares the Lord.", reference: "Jeremiah 29:11" }
+];
+
+const scriptureCards = [
+  { text: "For I know the plans I have for you, declares the Lord.", reference: "Jeremiah 29:11" },
+  { text: "Therefore if any man be in Christ, he is a new creature.", reference: "2 Corinthians 5:17" },
+  { text: "I can do all things through Christ which strengtheneth me.", reference: "Philippians 4:13" }
+];
+
+const growthSteps = ["Accept Christ", "Register & Join Community", "Meet Your Follow-up Mentor", "Attend Bible Classes", "Join a Service Unit", "Grow Spiritually", "Impact Others"];
+
+const platformFeatures = [
+  { icon: UserCheck, title: "Convert Registration", text: "Welcome new believers into a guided growth journey." },
+  { icon: Heart, title: "Follow-Up Tracking", text: "Keep prayer, calls, visits, and mentorship visible." },
+  { icon: Building2, title: "Province Management", text: "Connect every convert to the right province family." },
+  { icon: BookOpen, title: "Bible Study Resources", text: "Give beginners a steady path through Scripture." },
+  { icon: Users, title: "Spiritual Mentorship", text: "Help workers walk closely with every new believer." },
+  { icon: Calendar, title: "Event Notifications", text: "Surface classes, services, and province programs." }
+];
 
 function currentPath() {
   const path = window.location.pathname;
@@ -97,7 +133,7 @@ function Header({ active = "home", user }) {
         <a aria-current={active === "studies" ? "page" : undefined} href="studies.html">Studies</a>
         <a href="index.html#about">About</a>
         <a href="index.html#contact">Contact</a>
-        {user?.role === "admin" ? <a aria-current={active === "admin" ? "page" : undefined} href="admin.html">Admin</a> : null}
+        {canUseAdminTools(user) ? <a aria-current={active === "admin" ? "page" : undefined} href="admin.html">Admin</a> : null}
       </nav>
 
       <div className="header-actions">
@@ -109,59 +145,138 @@ function Header({ active = "home", user }) {
 }
 
 function HomePage({ user }) {
+  const word = dailyWords[new Date().getDate() % dailyWords.length];
+
   return (
     <div className="site-shell">
       <Header active="home" user={user} />
-      <main>
-        <section className="home-hero">
-          <div className="hero-copy">
-            <p className="eyebrow">Weekly discipleship for new believers</p>
-            <h1>Grow spiritually every week.</h1>
-            <p>A clean, guided platform for learning Scripture, building spiritual habits, and taking steady next steps after receiving Christ.</p>
+      <main className="home-redesign">
+        <section className="home-hero-v2">
+          <img className="home-hero-bg" src={portraitUrl} alt="Warm Christian welcome atmosphere" />
+          <div className="home-hero-overlay" />
+          <div className="home-hero-content">
+            <p className="hero-faith-pill">Hope • Growth • Salvation • Community • Purpose</p>
+            <div className="hero-title-stack">
+              <h1>Welcome Home.</h1>
+              <h2>A place to grow in Christ, discover purpose, and transform your life.</h2>
+            </div>
+            <p className="hero-lead">Join a growing Christian community designed to help new believers grow spiritually, connect deeply, and walk confidently with God.</p>
             <div className="hero-actions">
-              <a className="button" href="signup.html">Join the Journey</a>
-              <a className="button button-secondary" href="studies.html">Explore Weekly Studies</a>
+              <a className="button" href="signup.html">Get Started</a>
+              <a className="button button-light" href="#provinces">Join a Province</a>
+              <a className="button button-outline" href="signup.html">Become a Worker</a>
             </div>
           </div>
-          <div className="hero-media" aria-label="Spiritual growth guide portrait">
-            <img src={portraitUrl} alt="Portrait of the study guide developer" />
+          <aside className="daily-word-card" aria-label="Daily scripture">
+            <span>Today's Word</span>
+            <strong>“{word.text}”</strong>
+            <em>— {word.reference}</em>
+          </aside>
+        </section>
+
+        <section className="scripture-section" aria-label="Scripture inspiration">
+          {scriptureCards.map((item, index) => (
+            <article className="scripture-card" style={{ "--delay": `${index * 120}ms` }} key={item.reference}>
+              <BookOpen size={22} />
+              <p>“{item.text}”</p>
+              <strong>— {item.reference}</strong>
+            </article>
+          ))}
+        </section>
+
+        <section className="new-life-section" id="about">
+          <div className="new-life-copy">
+            <p className="eyebrow">New Life in Christ</p>
+            <h2>Your journey with Christ begins here.</h2>
+            <p>No matter your past, God's grace is available for you. This platform was created to help you grow spiritually, build meaningful relationships, and discover your God-given purpose.</p>
+            <p>You are not here by accident. God is calling you into a life of purpose, peace, and transformation.</p>
+          </div>
+          <div className="new-life-visual">
+            <img src={portraitUrl} alt="Spiritual growth guide" />
+            <div><strong>Faith grows best in community.</strong><span>Start your journey today.</span></div>
           </div>
         </section>
 
-        <section className="section-block" id="about">
-          <div className="section-heading">
-            <p className="eyebrow">Mission</p>
-            <h2>A simple path from new birth to steady growth.</h2>
-            <p>This platform keeps the homepage peaceful and focused. Weekly activities live in their own study area, while the entrance explains the purpose and invites people to begin.</p>
+        <section className="province-section" id="provinces">
+          <div className="section-heading split-heading">
+            <div><p className="eyebrow">Province Connection</p><h2>Find a spiritual family near you.</h2></div>
+            <a className="text-link" href="signup.html">Create Account</a>
           </div>
-        </section>
-
-        <section className="feature-band" aria-label="Featured teaching focus">
-          <div className="feature-copy">
-            <p className="eyebrow">Featured Focus</p>
-            <h2>Start with identity before activity.</h2>
-            <p>New believers need assurance first: Jesus saves by grace, welcomes us into God's family, and teaches us to grow through the Word, prayer, obedience, and fellowship.</p>
-            <a className="text-link" href="week-1.html">Open Week 1: Assurance and Identity</a>
-          </div>
-          <div className="feature-list">
-            {foundationPoints.slice(0, 3).map((item) => (
-              <article className="content-card" key={item.title}>
-                <p className="eyebrow">Foundation</p>
-                <h3>{item.title}</h3>
-                <p>{item.text}</p>
+          <div className="province-home-grid">
+            {ondoProvinces.map((province) => (
+              <article className="province-home-card" key={province.id}>
+                <MapPin size={22} />
+                <h3>{province.provinceName}</h3>
+                <p>{province.provinceLeader}</p>
+                <div><span>{province.status} province</span><span>{province.event}</span></div>
+                <a className="button button-secondary" href={province.href}>Join Province</a>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="cta-band" id="contact">
-          <div>
-            <p className="eyebrow">Next Step</p>
-            <h2>Join our weekly growth journey.</h2>
-            <p>Create an account, open the dashboard, and mark each weekly study as completed.</p>
+        <section className="growth-path-section">
+          <div className="section-heading">
+            <p className="eyebrow">Beginner Growth Path</p>
+            <h2>Every great testimony begins with one encounter with God.</h2>
           </div>
-          <a className="button" href="signup.html">Create Account</a>
+          <div className="growth-timeline">
+            {growthSteps.map((step, index) => (
+              <article key={step}>
+                <span>{index + 1}</span>
+                <strong>{step}</strong>
+              </article>
+            ))}
+          </div>
         </section>
+
+        <section className="community-section">
+          <article>
+            <p className="eyebrow">Testimony</p>
+            <h3>“This platform helped me reconnect with God and find a spiritual family.”</h3>
+            <span>— Esther A.</span>
+          </article>
+          <article>
+            <p className="eyebrow">Prayer Wall</p>
+            <h3>Prayer requests are followed up with care, encouragement, and Scripture.</h3>
+            <span>Mentors and workers stay connected.</span>
+          </article>
+          <article>
+            <p className="eyebrow">Upcoming</p>
+            <h3>New believers class, workers forum, and province fellowship updates.</h3>
+            <span>Built for community rhythm.</span>
+          </article>
+        </section>
+
+        <section className="features-section">
+          <div className="section-heading">
+            <p className="eyebrow">Platform Features</p>
+            <h2>Designed for salvation, growth, and follow-up.</h2>
+          </div>
+          <div className="features-home-grid">
+            {platformFeatures.map(({ icon: Icon, title, text }) => (
+              <article className="feature-home-card" key={title}>
+                <Icon size={24} />
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <footer className="home-footer" id="contact">
+          <div>
+            <p className="eyebrow">Spiritual Growth</p>
+            <h2>Welcomed. Inspired. Hopeful. Connected.</h2>
+            <p>Faith grows best in community. Start your journey today.</p>
+          </div>
+          <nav aria-label="Footer links">
+            <a href="studies.html">Studies</a>
+            <a href="signup.html">Create Account</a>
+            <a href="login.html">Login</a>
+            <a href="book.html">Hardcopy</a>
+          </nav>
+        </footer>
       </main>
     </div>
   );
@@ -172,6 +287,34 @@ function AuthPage({ mode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [provinces, setProvinces] = useState([]);
+  const [invitation, setInvitation] = useState(null);
+  const [accountType, setAccountType] = useState("member");
+  const [selectedProvinceId, setSelectedProvinceId] = useState("");
+  const invitationToken = isSignup ? new URLSearchParams(window.location.search).get("invite") || "" : "";
+  const requestedProvinceId = isSignup ? new URLSearchParams(window.location.search).get("province") || "" : "";
+  const selectedProvince = provinces.find((province) => province.id === selectedProvinceId);
+  const requestsAdminAccess = ["province-admin", "assistant-admin"].includes(accountType) || Boolean(invitation);
+
+  useEffect(() => {
+    if (!isSignup) return;
+    listProvinces({ activeOnly: true }).then((items) => {
+      setProvinces(items);
+      if (requestedProvinceId && items.some((province) => province.id === requestedProvinceId)) {
+        setSelectedProvinceId(requestedProvinceId);
+      }
+    }).catch(() => setProvinces([]));
+  }, [isSignup, requestedProvinceId]);
+
+  useEffect(() => {
+    if (!invitationToken) return;
+    getAdminInvitation(invitationToken)
+      .then((invite) => {
+        setInvitation(invite);
+        if (!invite || invite.status !== "pending") setError("This admin invitation is no longer available.");
+      })
+      .catch(() => setError("Unable to load this admin invitation."));
+  }, [invitationToken]);
 
   async function submit(event) {
     event.preventDefault();
@@ -182,17 +325,59 @@ function AuthPage({ mode }) {
       name: String(form.get("name") ?? "").trim(),
       email: String(form.get("email") ?? "").trim(),
       password: String(form.get("password") ?? ""),
+      accountType,
+      invitationToken,
+      username: String(form.get("username") ?? "").trim(),
       phone: String(form.get("phone") ?? "").trim(),
       decisionType: String(form.get("decisionType") ?? "").trim(),
+      gender: String(form.get("gender") ?? "").trim(),
+      state: String(form.get("state") ?? "").trim(),
+      provinceId: String(form.get("provinceId") ?? "").trim(),
+      parish: String(form.get("parish") ?? "").trim(),
+      conversionDate: String(form.get("conversionDate") ?? "").trim(),
+      invitedBy: String(form.get("invitedBy") ?? "").trim(),
+      baptismStatus: String(form.get("baptismStatus") ?? "").trim(),
+      workerAssigned: String(form.get("workerAssigned") ?? "").trim(),
+      requestedRole: String(form.get("requestedRole") ?? accountType).trim(),
+      ministryPosition: String(form.get("ministryPosition") ?? "").trim(),
+      yearsOfService: String(form.get("yearsOfService") ?? "").trim(),
+      idCardFileName: form.get("idCard")?.name || "",
+      passportPhotoFileName: form.get("passportPhoto")?.name || "",
+      recommendationLetterFileName: form.get("recommendationLetter")?.name || "",
       occupation: String(form.get("occupation") ?? "").trim(),
       officeAddress: String(form.get("officeAddress") ?? "").trim(),
       homeAddress: String(form.get("homeAddress") ?? "").trim(),
       nearestBusStop: String(form.get("nearestBusStop") ?? "").trim(),
       prayerRequest: String(form.get("prayerRequest") ?? "").trim()
     };
+    const confirmPassword = String(form.get("confirmPassword") ?? "");
 
     if (isSignup && payload.name.length < 2) {
       setError("Please enter your full name.");
+      setBusy(false);
+      return;
+    }
+
+    if (isSignup && payload.password !== confirmPassword) {
+      setError("Passwords do not match.");
+      setBusy(false);
+      return;
+    }
+
+    if (isSignup && !invitation && (requestsAdminAccess || provinces.length > 0) && !payload.provinceId) {
+      setError("Please select your province.");
+      setBusy(false);
+      return;
+    }
+
+    if (isSignup && requestsAdminAccess && (!payload.username || !payload.ministryPosition || !payload.yearsOfService || !payload.idCardFileName || !payload.passportPhotoFileName)) {
+      setError("Please complete the province admin verification fields.");
+      setBusy(false);
+      return;
+    }
+
+    if (isSignup && invitation && payload.email.toLowerCase() !== String(invitation.email).toLowerCase()) {
+      setError("Use the email address that received this admin invitation.");
       setBusy(false);
       return;
     }
@@ -203,7 +388,7 @@ function AuthPage({ mode }) {
       setBusy(false);
       return;
     }
-    window.location.href = result.user?.role === "admin" ? "admin.html" : "dashboard.html";
+    window.location.href = canUseAdminTools(result.user) ? "admin.html" : "dashboard.html";
   }
 
   return (
@@ -218,13 +403,24 @@ function AuthPage({ mode }) {
         </div>
         <div className="auth-heading">
           <p className="eyebrow">{isSignup ? "Sign Up" : "Login"}</p>
-          <h1>{isSignup ? "Join the weekly growth journey." : "Welcome back."}</h1>
-          <p>{isSignup ? "Create an account to track weekly studies, mark lessons complete, and continue from your dashboard." : "Continue your weekly study journey with your email and password."}</p>
+          <h1>{invitation ? "Activate your province admin account." : isSignup ? "Join the weekly growth journey." : "Welcome back."}</h1>
+          <p>{invitation ? `You have been invited as ${invitation.roleType?.replaceAll("-", " ")}. Create your password to open the province dashboard.` : isSignup ? "Create an account to track weekly studies, mark lessons complete, and continue from your dashboard." : "Continue your weekly study journey with your email and password."}</p>
         </div>
         <form className="auth-form" onSubmit={submit}>
           <div className="auth-field-grid">
-            {isSignup ? <label><span>Full Name</span><input name="name" type="text" autoComplete="name" required /></label> : null}
-            <label><span>Email</span><input name="email" type="email" autoComplete="email" required /></label>
+            {isSignup && !invitation ? (
+              <label className="auth-wide-field">
+                <span>Account Type</span>
+                <select value={accountType} onChange={(event) => setAccountType(event.target.value)} required>
+                  <option value="member">Member</option>
+                  <option value="worker">Worker</option>
+                  <option value="province-admin">Province Admin</option>
+                  <option value="assistant-admin">Assistant Admin</option>
+                </select>
+              </label>
+            ) : null}
+            {isSignup ? <label><span>Full Name</span><input name="name" type="text" autoComplete="name" defaultValue={invitation?.fullName || ""} readOnly={Boolean(invitation)} required /></label> : null}
+            <label><span>Email</span><input name="email" type="email" autoComplete="email" defaultValue={invitation?.email || ""} readOnly={Boolean(invitation)} required /></label>
             <label>
               <span>Password</span>
               <span className="password-control">
@@ -232,19 +428,31 @@ function AuthPage({ mode }) {
                 <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
               </span>
             </label>
+            {isSignup ? <label><span>Confirm Password</span><input name="confirmPassword" type={showPassword ? "text" : "password"} minLength="6" autoComplete="new-password" required /></label> : null}
             {isSignup ? (
               <>
-                <label><span>Decision</span><select name="decisionType" required><option value="">Select decision</option><option value="accepted-christ">I accept Jesus Christ as my Lord and Saviour</option><option value="rededication">I re-dedicate my life to Jesus Christ</option></select></label>
-                <label><span>Phone Number</span><input name="phone" type="tel" autoComplete="tel" required /></label>
+                {requestsAdminAccess ? <label><span>Username</span><input name="username" type="text" defaultValue={invitation?.username || ""} readOnly={Boolean(invitation)} required /></label> : <label><span>Decision</span><select name="decisionType" required><option value="">Select decision</option><option value="accepted-christ">I accept Jesus Christ as my Lord and Saviour</option><option value="rededication">I re-dedicate my life to Jesus Christ</option></select></label>}
+                <label><span>Phone Number</span><input name="phone" type="tel" autoComplete="tel" defaultValue={invitation?.phone || ""} required /></label>
+                <label><span>Gender</span><select name="gender" defaultValue={invitation?.gender || ""} required><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
+                {invitation ? <input name="provinceId" type="hidden" value={invitation.provinceId || ""} /> : <label><span>Province</span><select name="provinceId" value={selectedProvinceId} onChange={(event) => setSelectedProvinceId(event.target.value)} required={provinces.length > 0}><option value="">{provinces.length ? "Select province" : "No province yet"}</option>{provinces.map((province) => <option value={province.id} key={province.id}>{province.provinceName}</option>)}</select></label>}
+                {requestsAdminAccess ? <label><span>Province Code</span><input name="state" value={selectedProvince?.provinceCode || ""} readOnly required /></label> : <label><span>State</span><input name="state" type="text" autoComplete="address-level1" required /></label>}
+                {requestsAdminAccess ? <label><span>Province Location</span><input name="parish" value={selectedProvince?.stateRegion || ""} readOnly required /></label> : <label><span>Parish/Branch</span><input name="parish" type="text" required /></label>}
+                {requestsAdminAccess ? <label><span>Position/Role</span><input name="ministryPosition" type="text" required /></label> : <label><span>Date of Conversion</span><input name="conversionDate" type="date" /></label>}
+                {requestsAdminAccess ? <label><span>Requested Role</span><select name="requestedRole" defaultValue={accountType}><option value="province-admin">Province Admin</option><option value="assistant-admin">Assistant Admin</option></select></label> : <label><span>Baptism Status</span><select name="baptismStatus"><option value="not-recorded">Not recorded</option><option value="not-baptized">Not baptized</option><option value="scheduled">Scheduled</option><option value="baptized">Baptized</option></select></label>}
+                {requestsAdminAccess ? <label><span>Parish/Branch</span><input name="officeAddress" type="text" required /></label> : <label><span>Invited By <em>Optional</em></span><input name="invitedBy" type="text" /></label>}
+                {requestsAdminAccess ? <label><span>Years of Service</span><input name="yearsOfService" type="number" min="0" required /></label> : <label><span>Worker Assigned <em>Optional</em></span><input name="workerAssigned" type="text" /></label>}
+                {requestsAdminAccess ? <label><span>ID Card Upload</span><input name="idCard" type="file" accept="image/*,.pdf" required /></label> : null}
+                {requestsAdminAccess ? <label><span>Passport Photograph</span><input name="passportPhoto" type="file" accept="image/*" required /></label> : null}
+                {requestsAdminAccess ? <label className="auth-wide-field"><span>Recommendation Letter <em>Optional</em></span><input name="recommendationLetter" type="file" accept="image/*,.pdf,.doc,.docx" /></label> : null}
                 <label><span>Occupation <em>Optional</em></span><input name="occupation" type="text" autoComplete="organization-title" /></label>
                 <label><span>Nearest Bus Stop <em>Optional</em></span><input name="nearestBusStop" type="text" /></label>
                 <label className="auth-wide-field"><span>Home Address <em>Optional</em></span><input name="homeAddress" type="text" autoComplete="street-address" /></label>
-                <label className="auth-wide-field"><span>Office Address <em>Optional</em></span><input name="officeAddress" type="text" /></label>
+                {!requestsAdminAccess ? <label className="auth-wide-field"><span>Office Address <em>Optional</em></span><input name="officeAddress" type="text" /></label> : null}
                 <label className="auth-wide-field"><span>Prayer Request <em>Optional</em></span><textarea name="prayerRequest" rows="3" /></label>
               </>
             ) : null}
           </div>
-          <p className="form-note">{isSignup ? "Your account helps save study progress and continue from your dashboard." : "Use the email and password from signup."}</p>
+          <p className="form-note">{isSignup && requestsAdminAccess ? "Admin access remains pending until a Super Admin reviews and approves your request." : isSignup ? "Your account helps save study progress and continue from your dashboard." : "Use the email and password from signup."}</p>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <button className="button auth-submit" type="submit" disabled={busy}>{busy ? "Please wait..." : isSignup ? "Create Account" : "Login"}</button>
         </form>
@@ -439,24 +647,178 @@ function DashboardPage({ user }) {
 
 function AdminPage({ user }) {
   const [rows, setRows] = useState([]);
+  const [provinces, setProvinces] = useState([]);
+  const [adminRequests, setAdminRequests] = useState([]);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [accessFilter, setAccessFilter] = useState("all");
+  const [provinceFilter, setProvinceFilter] = useState("all");
   const [followUpFilter, setFollowUpFilter] = useState("all");
   const [hardcopyFilter, setHardcopyFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [savingId, setSavingId] = useState("");
+  const [editingProvinceId, setEditingProvinceId] = useState("");
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState(1);
+  const [setupComplete, setSetupComplete] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    if (user.role !== "admin") return;
+    if (!canUseAdminTools(user)) return;
     setLoadingUsers(true);
-    listUsersForAdmin()
+    listUsersForAdmin(user)
       .then((items) => setRows(items.sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email)))))
       .catch((error) => setMessage(error.message))
       .finally(() => setLoadingUsers(false));
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !canUseAdminTools(user)) return;
+    listProvinces({ includeDefaults: !isSuperAdmin(user) }).then(setProvinces).catch((error) => setMessage(error.message));
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !isSuperAdmin(user)) return;
+    listAdminRequests().then(setAdminRequests).catch((error) => setMessage(error.message));
+  }, [user]);
+
+  const provinceById = useMemo(() => Object.fromEntries(provinces.map((province) => [province.id, province])), [provinces]);
+
+  async function reloadProvinces() {
+    setProvinces(await listProvinces({ includeDefaults: !isSuperAdmin(user) }));
+  }
+
+  async function addOndoProvinces() {
+    if (!isSuperAdmin(user)) return;
+    setMessage("");
+    try {
+      setProvinces(await ensureDefaultOndoProvinces());
+      setMessage("Ondo provinces added to the province register.");
+    } catch (error) {
+      setMessage(error.message || "Unable to add Ondo provinces.");
+    }
+  }
+
+  async function completeFirstProvinceSetup(event) {
+    event.preventDefault();
+    if (!isSuperAdmin(user)) return;
+    setMessage("");
+    setSavingId("first-province-setup");
+    const form = new FormData(event.currentTarget);
+    const provincePayload = {
+      provinceName: String(form.get("provinceName") ?? "").trim(),
+      provinceCode: String(form.get("provinceCode") ?? "").trim(),
+      address: String(form.get("address") ?? "").trim(),
+      stateRegion: String(form.get("stateRegion") ?? "").trim(),
+      provinceEmail: String(form.get("provinceEmail") ?? "").trim(),
+      provincePhone: String(form.get("provincePhone") ?? "").trim(),
+      provinceLeader: String(form.get("provinceLeader") ?? "").trim(),
+      contactInfo: String(form.get("provincePhone") ?? "").trim(),
+      status: "active"
+    };
+    const adminPayload = {
+      fullName: String(form.get("adminName") ?? "").trim(),
+      email: String(form.get("adminEmail") ?? "").trim(),
+      phone: String(form.get("adminPhone") ?? "").trim(),
+      username: String(form.get("adminUsername") ?? "").trim(),
+      temporaryPassword: String(form.get("adminPassword") ?? "").trim(),
+      roleType: String(form.get("roleType") ?? "province-admin"),
+      accessLevel: "standard",
+      accountStatus: "pending-verification"
+    };
+
+    if (Object.values(provincePayload).some((value) => !value) || !adminPayload.fullName || !adminPayload.email || !adminPayload.phone || !adminPayload.username || adminPayload.temporaryPassword.length < 6) {
+      setMessage("Complete all required province and admin setup fields.");
+      setSavingId("");
+      return;
+    }
+
+    try {
+      const province = await createProvince(provincePayload);
+      await createAdminInvitation({ ...adminPayload, provinceId: province.id }, user);
+      await reloadProvinces();
+      setSetupStep(4);
+      setSetupComplete(true);
+      setMessage("Province created successfully. Province admin invitation prepared.");
+      setTimeout(() => setSetupWizardOpen(false), 1400);
+    } catch (error) {
+      setMessage(error.message || "Unable to complete first province setup.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  async function reloadAdminRequests() {
+    if (isSuperAdmin(user)) setAdminRequests(await listAdminRequests());
+  }
+
+  async function saveProvince(event) {
+    event.preventDefault();
+    if (!isSuperAdmin(user)) return;
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      provinceName: String(form.get("provinceName") ?? "").trim(),
+      provinceCode: String(form.get("provinceCode") ?? "").trim(),
+      address: String(form.get("address") ?? "").trim(),
+      stateRegion: String(form.get("stateRegion") ?? "").trim(),
+      provinceEmail: String(form.get("provinceEmail") ?? "").trim(),
+      provincePhone: String(form.get("provincePhone") ?? "").trim(),
+      provinceLeader: String(form.get("provinceLeader") ?? "").trim(),
+      contactInfo: String(form.get("contactInfo") ?? "").trim(),
+      status: String(form.get("status") ?? "active")
+    };
+
+    if (!payload.provinceName || !payload.provinceCode || !payload.stateRegion || !payload.address || !payload.provinceEmail || !payload.provincePhone) {
+      setMessage("Province name, code, state, address, email, and phone are required.");
+      return;
+    }
+
+    try {
+      if (editingProvinceId) {
+        await updateProvince(editingProvinceId, payload);
+        setMessage("Province updated.");
+      } else {
+        await createProvince(payload);
+        event.currentTarget.reset();
+        setMessage("Province created.");
+      }
+      setEditingProvinceId("");
+      await reloadProvinces();
+    } catch (error) {
+      setMessage(error.message || "Unable to save province.");
+    }
+  }
+
+  async function removeProvince(provinceId) {
+    if (!isSuperAdmin(user)) return;
+    if (!window.confirm("Delete this province? Converts assigned to it will keep the old province id until transferred.")) return;
+    setMessage("");
+    try {
+      await deleteProvince(provinceId);
+      setMessage("Province deleted.");
+      await reloadProvinces();
+    } catch (error) {
+      setMessage(error.message || "Unable to delete province.");
+    }
+  }
+
+  async function reviewAdminRequest(request, decision) {
+    if (!isSuperAdmin(user)) return;
+    setSavingId(request.id);
+    setMessage("");
+    try {
+      await decideAdminRequest(request, decision, user);
+      setRows(rows.map((row) => (row.id === request.id ? { ...row, accountStatus: decision, role: request.requestedRole, provinceId: request.provinceId } : row)));
+      await reloadAdminRequests();
+      setMessage(`${request.fullName || request.email} ${decision}.`);
+    } catch (error) {
+      setMessage(error.message || "Unable to update this admin request.");
+    } finally {
+      setSavingId("");
+    }
+  }
 
   async function saveUserField(row, field, value) {
     setMessage("");
@@ -476,12 +838,20 @@ function AdminPage({ user }) {
   }
 
   function exportUsers() {
-    const columns = ["name", "email", "phone", "decisionType", "occupation", "homeAddress", "officeAddress", "nearestBusStop", "prayerRequest", "accessPlan", "role", "followUpStatus", "hardcopyStatus", "completedCount", "joinedAt", "adminNotes"];
+    const columns = ["name", "email", "phone", "gender", "decisionType", "province", "state", "parish", "conversionDate", "invitedBy", "baptismStatus", "workerAssigned", "occupation", "homeAddress", "officeAddress", "nearestBusStop", "prayerRequest", "accessPlan", "role", "followUpStatus", "hardcopyStatus", "completedCount", "joinedAt", "adminNotes"];
     const values = filtered.map((row) => ({
       name: row.name || "Student",
       email: row.email || "",
       phone: row.phone || "",
+      gender: row.gender || "",
       decisionType: row.decisionType || "",
+      province: provinceById[row.provinceId]?.provinceName || "",
+      state: row.state || "",
+      parish: row.parish || "",
+      conversionDate: row.conversionDate || "",
+      invitedBy: row.invitedBy || "",
+      baptismStatus: row.baptismStatus || "",
+      workerAssigned: row.workerAssigned || "",
       occupation: row.occupation || "",
       homeAddress: row.homeAddress || "",
       officeAddress: row.officeAddress || "",
@@ -505,22 +875,23 @@ function AdminPage({ user }) {
   }
 
   const filtered = useMemo(() => rows.filter((row) => {
-    const searchText = `${row.name} ${row.email} ${row.phone} ${row.decisionType} ${row.occupation} ${row.homeAddress} ${row.nearestBusStop} ${row.prayerRequest} ${row.role} ${row.accessPlan} ${row.followUpStatus} ${row.hardcopyStatus}`.toLowerCase();
+    const searchText = `${row.name} ${row.email} ${row.phone} ${row.gender} ${row.decisionType} ${provinceById[row.provinceId]?.provinceName} ${row.state} ${row.parish} ${row.invitedBy} ${row.workerAssigned} ${row.occupation} ${row.homeAddress} ${row.nearestBusStop} ${row.prayerRequest} ${row.role} ${row.accessPlan} ${row.followUpStatus} ${row.hardcopyStatus}`.toLowerCase();
     const hardcopyStatus = row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none");
 
     return searchText.includes(query.toLowerCase())
       && (roleFilter === "all" || (row.role || "student") === roleFilter)
       && (accessFilter === "all" || (row.accessPlan || "") === accessFilter)
+      && (provinceFilter === "all" || (row.provinceId || "") === provinceFilter)
       && (followUpFilter === "all" || (row.followUpStatus || "none") === followUpFilter)
       && (hardcopyFilter === "all" || hardcopyStatus === hardcopyFilter);
-  }), [rows, query, roleFilter, accessFilter, followUpFilter, hardcopyFilter]);
+  }), [rows, query, roleFilter, accessFilter, provinceFilter, followUpFilter, hardcopyFilter, provinceById]);
   const completedTotal = rows.reduce((sum, row) => sum + (row.completedDays?.length ?? 0), 0);
   const needsFollowUp = rows.filter((row) => row.followUpStatus === "needed").length;
-  const hardcopyLeads = rows.filter((row) => row.hardcopyInterest || row.hardcopyStatus === "interested" || row.hardcopyStatus === "ordered").length;
   const activeStudents = rows.filter((row) => (row.completedDays?.length ?? 0) > 0).length;
+  const selectedProvince = provinces.find((province) => province.id === editingProvinceId);
 
   if (!user) return <AuthPage mode="login" />;
-  if (user.role !== "admin") {
+  if (!canUseAdminTools(user)) {
     return (
       <div className="site-shell">
         <Header user={user} active="admin" />
@@ -534,42 +905,165 @@ function AdminPage({ user }) {
       <Header user={user} active="admin" />
       <main className="page-stack">
         <section className="dashboard-hero">
-          <div><p className="eyebrow">Admin Dashboard</p><h1>Monitor students and study activity.</h1><p>Review registered users, access plans, completion totals, and account metadata.</p></div>
-          <div className="completion-meter"><ShieldCheck size={32} /><span>Admin</span></div>
+          <div>
+            <p className="eyebrow">{isSuperAdmin(user) ? "Super Admin Dashboard" : "Province Dashboard"}</p>
+            <h1>{isSuperAdmin(user) ? "Monitor provinces and converts." : "Manage your province converts."}</h1>
+            <p>{isSuperAdmin(user) ? "Create provinces, assign province admins, transfer converts, and review platform-wide activity." : "Register follow-up details, assign workers, and report on converts in your assigned province."}</p>
+          </div>
+          <div className="completion-meter"><ShieldCheck size={32} /><span>{isSuperAdmin(user) ? "Super Admin" : provinceById[user.provinceId]?.provinceName || "Province Admin"}</span></div>
         </section>
         <section className="admin-metrics">
-          <article className="progress-card"><Users /><strong>{rows.length}</strong><span>Total users</span></article>
+          <article className="progress-card"><Building2 /><strong>{isSuperAdmin(user) ? provinces.length : 1}</strong><span>{isSuperAdmin(user) ? "Total provinces" : "Assigned province"}</span></article>
+          <article className="progress-card"><Users /><strong>{rows.length}</strong><span>Total converts</span></article>
           <article className="progress-card"><strong>{completedTotal}</strong><span>Completed lessons marked</span></article>
           <article className="progress-card"><strong>{activeStudents}</strong><span>Active students</span></article>
           <article className="progress-card"><strong>{needsFollowUp}</strong><span>Need follow-up</span></article>
-          <article className="progress-card"><strong>{hardcopyLeads}</strong><span>Hardcopy leads</span></article>
-          <article className="progress-card"><strong>{rows.filter((row) => row.role === "admin").length}</strong><span>Admins</span></article>
+          <article className="progress-card"><strong>{rows.filter((row) => row.role === "province-admin").length}</strong><span>Province admins</span></article>
         </section>
         <section className="admin-action-grid" aria-label="Admin quick actions">
-          <button type="button" onClick={() => { setFollowUpFilter("needed"); setRoleFilter("all"); setAccessFilter("all"); setHardcopyFilter("all"); }}>
+          <button type="button" onClick={() => { setFollowUpFilter("needed"); setRoleFilter("all"); setAccessFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
             <strong>Follow up</strong>
             <span>Show students marked as needing care or contact.</span>
           </button>
-          <button type="button" onClick={() => { setHardcopyFilter("interested"); setRoleFilter("all"); setAccessFilter("all"); setFollowUpFilter("all"); }}>
-            <strong>Hardcopy list</strong>
-            <span>Find people interested in printed study materials.</span>
+          <button type="button" onClick={() => { setRoleFilter("province-admin"); setAccessFilter("all"); setFollowUpFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
+            <strong>Province admins</strong>
+            <span>Review people assigned to administer province records.</span>
           </button>
-          <button type="button" onClick={() => { setRoleFilter("student"); setAccessFilter(""); setFollowUpFilter("all"); setHardcopyFilter("all"); }}>
+          <button type="button" onClick={() => { setRoleFilter("student"); setAccessFilter(""); setFollowUpFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
             <strong>No access</strong>
             <span>Review students who cannot open member studies.</span>
           </button>
-          <button type="button" onClick={() => { setRoleFilter("all"); setAccessFilter("all"); setFollowUpFilter("all"); setHardcopyFilter("all"); setQuery(""); }}>
-            <strong>All users</strong>
+          <button type="button" onClick={() => { setRoleFilter("all"); setAccessFilter("all"); setProvinceFilter("all"); setFollowUpFilter("all"); setHardcopyFilter("all"); setQuery(""); }}>
+            <strong>All converts</strong>
             <span>Clear every filter and return to the full register.</span>
           </button>
         </section>
+        {isSuperAdmin(user) ? (
+          <section className="admin-panel province-panel">
+            <div className="admin-section-heading">
+              <div><p className="eyebrow">Province Management</p><h2>Create and assign provinces.</h2></div>
+              <div className="province-card-actions">
+                <button type="button" onClick={addOndoProvinces}>Add Ondo Provinces</button>
+                {editingProvinceId ? <button type="button" onClick={() => setEditingProvinceId("")}>New Province</button> : null}
+              </div>
+            </div>
+            {provinces.length === 0 && !setupWizardOpen ? (
+              <section className="province-empty-state">
+                <div className="province-empty-illustration" aria-hidden="true"><Building2 size={42} /><span /></div>
+                <p className="eyebrow">Start Building Your Ministry Network</p>
+                <h2>Welcome to Province Management</h2>
+                <p>No provinces have been created yet. Create your first province to begin onboarding admins, registering new converts, and managing church activities across regions.</p>
+                <p>Your ministry structure begins here. Set up your first province and empower leaders to manage spiritual growth, follow-up, and community engagement effectively.</p>
+                <div className="province-empty-actions">
+                  <button className="button" type="button" onClick={() => { setSetupWizardOpen(true); setSetupStep(1); setSetupComplete(false); }}>Create First Province</button>
+                  <button className="button button-secondary" type="button" onClick={addOndoProvinces}>Use Ondo Province Templates</button>
+                </div>
+              </section>
+            ) : setupWizardOpen ? (
+              <form className="province-setup-wizard" onSubmit={completeFirstProvinceSetup}>
+                <div className="setup-progress" aria-label="Province setup progress">
+                  {["Province Information", "Province Admin Setup", "Assign Permissions", "Complete Setup"].map((label, index) => (
+                    <button className={setupStep === index + 1 ? "is-active" : setupComplete && index + 1 < 4 ? "is-done" : ""} type="button" onClick={() => setSetupStep(index + 1)} key={label}>
+                      <span>{index + 1}</span>
+                      <strong>{label}</strong>
+                    </button>
+                  ))}
+                </div>
+                <div className={`province-form wizard-step ${setupStep === 1 ? "" : "is-hidden"}`}>
+                    <label><span>Province Name</span><input name="provinceName" required /></label>
+                    <label><span>Province Code</span><input name="provinceCode" required /></label>
+                    <label><span>Province Address</span><input name="address" required /></label>
+                    <label><span>State/Region</span><input name="stateRegion" required /></label>
+                    <label><span>Province Pastor Name</span><input name="provinceLeader" required /></label>
+                    <label><span>Contact Number</span><input name="provincePhone" type="tel" required /></label>
+                    <label><span>Email Address</span><input name="provinceEmail" type="email" required /></label>
+                </div>
+                <div className={`province-form wizard-step ${setupStep === 2 ? "" : "is-hidden"}`}>
+                    <label><span>Full Name</span><input name="adminName" required /></label>
+                    <label><span>Email</span><input name="adminEmail" type="email" required /></label>
+                    <label><span>Phone Number</span><input name="adminPhone" type="tel" required /></label>
+                    <label><span>Username</span><input name="adminUsername" required /></label>
+                    <label><span>Password</span><input name="adminPassword" type="text" minLength="6" required /></label>
+                </div>
+                <div className={`province-form wizard-step ${setupStep === 3 ? "" : "is-hidden"}`}>
+                    <label><span>Permission Role</span><select name="roleType" required><option value="province-admin">Province Admin</option><option value="assistant-admin">Assistant Admin</option><option value="follow-up-officer">Follow-up Officer</option></select></label>
+                    <article className="permission-summary"><strong>Province Admin</strong><span>Manage converts, follow-up, workers, and province reports.</span></article>
+                    <article className="permission-summary"><strong>Assistant Admin</strong><span>Limited province management and reporting support.</span></article>
+                    <article className="permission-summary"><strong>Follow-up Officer</strong><span>Follow-up task and convert care access only.</span></article>
+                </div>
+                {setupStep === 4 ? (
+                  <div className="setup-complete-card">
+                    <h3>{setupComplete ? "System Ready" : "Complete Setup"}</h3>
+                    <p>{setupComplete ? "Your first province has been created and the province admin invitation is ready." : "Save the province, create the admin invitation, and prepare the dashboard."}</p>
+                    <ul><li>✓ Province Created Successfully</li><li>✓ Province Admin Assigned</li><li>✓ Invitation Prepared</li><li>✓ System Ready</li></ul>
+                  </div>
+                ) : null}
+                <div className="wizard-actions">
+                  <button className="button button-secondary" type="button" onClick={() => setupStep === 1 ? setSetupWizardOpen(false) : setSetupStep(setupStep - 1)}>{setupStep === 1 ? "Cancel" : "Back"}</button>
+                  {setupStep < 4 ? <button className="button" type="button" onClick={() => setSetupStep(setupStep + 1)}>Continue</button> : <button className="button" type="submit" disabled={savingId === "first-province-setup"}>{savingId === "first-province-setup" ? "Saving..." : "Complete Setup"}</button>}
+                </div>
+              </form>
+            ) : (
+              <>
+            <form className="province-form" onSubmit={saveProvince} key={editingProvinceId || "new-province"}>
+              <label><span>Province Name</span><input name="provinceName" defaultValue={selectedProvince?.provinceName || ""} required /></label>
+              <label><span>Province Code</span><input name="provinceCode" defaultValue={selectedProvince?.provinceCode || ""} required /></label>
+              <label><span>State/Region</span><input name="stateRegion" defaultValue={selectedProvince?.stateRegion || ""} required /></label>
+              <label><span>Status</span><select name="status" defaultValue={selectedProvince?.status || "active"}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+              <label><span>Province Email</span><input name="provinceEmail" type="email" defaultValue={selectedProvince?.provinceEmail || ""} required /></label>
+              <label><span>Province Phone</span><input name="provincePhone" type="tel" defaultValue={selectedProvince?.provincePhone || ""} required /></label>
+              <label><span>Province Pastor/Leader</span><input name="provinceLeader" defaultValue={selectedProvince?.provinceLeader || ""} /></label>
+              <label><span>Contact Information</span><input name="contactInfo" defaultValue={selectedProvince?.contactInfo || ""} /></label>
+              <label className="auth-wide-field"><span>Province Address</span><input name="address" defaultValue={selectedProvince?.address || ""} required /></label>
+              <button className="button" type="submit">{editingProvinceId ? "Update Province" : "Create Province"}</button>
+            </form>
+            <div className="province-list">
+              {provinces.map((province) => (
+                <article className="province-card" key={province.id}>
+                  <div><strong>{province.provinceName}</strong><span>{province.provinceCode} · {province.stateRegion || "No region"} · {province.status}</span></div>
+                  <div className="province-card-actions">
+                    <button type="button" onClick={() => setEditingProvinceId(province.id)}>Edit</button>
+                    <button type="button" onClick={() => removeProvince(province.id)}>Delete</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+              </>
+            )}
+          </section>
+        ) : null}
+        {isSuperAdmin(user) ? (
+          <section className="admin-panel province-panel">
+            <div className="admin-section-heading">
+              <div><p className="eyebrow">Admin Approval Queue</p><h2>Review province admin applications.</h2></div>
+            </div>
+            <div className="province-list">
+              {adminRequests.map((request) => (
+                <article className="province-card admin-request-card" key={request.id}>
+                  <div>
+                    <strong>{request.fullName}</strong>
+                    <span>{request.requestedRole?.replaceAll("-", " ")} · {provinceById[request.provinceId]?.provinceName || "No province"} · {request.status}</span>
+                    <small>{request.email} · {request.phone} · {request.yearsOfService || "0"} years</small>
+                    <small>ID: {request.idCardFileName || "missing"} · Passport: {request.passportPhotoFileName || "missing"} · Letter: {request.recommendationLetterFileName || "optional"}</small>
+                  </div>
+                  <div className="province-card-actions">
+                    <button type="button" disabled={savingId === request.id || request.status !== "pending"} onClick={() => reviewAdminRequest(request, "approved")}>Approve</button>
+                    <button type="button" disabled={savingId === request.id || request.status !== "pending"} onClick={() => reviewAdminRequest(request, "rejected")}>Reject</button>
+                  </div>
+                </article>
+              ))}
+              {adminRequests.length === 0 ? <p className="admin-result-count">No admin applications are waiting for review.</p> : null}
+            </div>
+          </section>
+        ) : null}
         <section className="admin-panel">
           <div className="admin-toolbar">
-            <label className="admin-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search users" /></label>
+            <label className="admin-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search converts, provinces, workers" /></label>
             <button className="button button-secondary" type="button" onClick={exportUsers}>Export CSV</button>
           </div>
           <div className="admin-filters" aria-label="User filters">
-            <label><span>Role</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All roles</option><option value="student">Students</option><option value="admin">Admins</option></select></label>
+            <label><span>Role</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All roles</option><option value="student">Converts</option>{isSuperAdmin(user) ? <option value="province-admin">Province Admins</option> : null}{isSuperAdmin(user) ? <option value="assistant-admin">Assistant Admins</option> : null}{isSuperAdmin(user) ? <option value="follow-up-officer">Follow-up Officers</option> : null}{isSuperAdmin(user) ? <option value="data-entry-officer">Data Entry Officers</option> : null}<option value="admin">Super Admins</option></select></label>
+            {isSuperAdmin(user) ? <label><span>Province</span><select value={provinceFilter} onChange={(event) => setProvinceFilter(event.target.value)}><option value="all">All provinces</option><option value="">No province</option>{provinces.map((province) => <option value={province.id} key={province.id}>{province.provinceName}</option>)}</select></label> : null}
             <label><span>Access</span><select value={accessFilter} onChange={(event) => setAccessFilter(event.target.value)}><option value="all">All access</option><option value="">No access</option><option value="member">Member</option><option value="paid">Paid</option><option value="sponsored">Sponsored</option><option value="church-group">Church group</option></select></label>
             <label><span>Follow-up</span><select value={followUpFilter} onChange={(event) => setFollowUpFilter(event.target.value)}><option value="all">All follow-up</option><option value="none">None</option><option value="needed">Needed</option><option value="contacted">Contacted</option><option value="resolved">Resolved</option></select></label>
             <label><span>Hardcopy</span><select value={hardcopyFilter} onChange={(event) => setHardcopyFilter(event.target.value)}><option value="all">All hardcopy</option><option value="none">None</option><option value="interested">Interested</option><option value="ordered">Ordered</option><option value="delivered">Delivered</option></select></label>
@@ -578,24 +1072,46 @@ function AdminPage({ user }) {
           <p className="admin-result-count">{loadingUsers ? "Loading users..." : `Showing ${filtered.length} of ${rows.length} users`}</p>
           <div className="admin-table-wrap">
             <table className="admin-table">
-              <thead><tr><th>Name</th><th>Contact</th><th>Decision Card</th><th>Status</th><th>Plan</th><th>Role</th><th>Follow-up</th><th>Hardcopy</th><th>Completed</th><th>Notes</th><th>Joined</th></tr></thead>
+              <thead><tr><th>Name</th><th>Contact</th><th>Province</th><th>Onboarding</th><th>Status</th><th>Plan</th><th>Role</th><th>Follow-up</th><th>Worker</th><th>Completed</th><th>Notes</th><th>Joined</th></tr></thead>
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
                     <td><strong>{row.name || "Student"}</strong></td>
                     <td><span>{row.email}</span><small>{row.phone || "No phone"}</small></td>
                     <td>
+                      {isSuperAdmin(user) ? (
+                        <select value={row.provinceId || ""} disabled={savingId === row.id} onChange={(event) => saveUserField(row, "provinceId", event.target.value)}>
+                          <option value="">No province</option>
+                          {provinces.map((province) => <option value={province.id} key={province.id}>{province.provinceName}</option>)}
+                        </select>
+                      ) : <span>{provinceById[row.provinceId]?.provinceName || "Assigned province"}</span>}
+                      <small>{row.parish || "No parish"}</small>
+                      <small>{row.state || "No state"}</small>
+                    </td>
+                    <td>
                       <span>{row.decisionType === "rededication" ? "Re-dedication" : row.decisionType === "accepted-christ" ? "Accepted Christ" : "Not recorded"}</span>
-                      <small>{row.occupation || "No occupation"}</small>
+                      <small>{row.gender || "No gender"} · {row.baptismStatus || "No baptism status"}</small>
+                      <small>{row.conversionDate || "No conversion date"}</small>
+                      <small>{row.invitedBy ? `Invited by ${row.invitedBy}` : "No inviter"}</small>
                       <small>{row.nearestBusStop || "No bus stop"}</small>
                       {row.prayerRequest ? <small>Prayer: {row.prayerRequest}</small> : null}
                     </td>
                     <td>
-                      <span className={`status-pill status-${row.role === "admin" ? "admin" : "student"}`}>{row.role || "student"}</span>
+                      <span className={`status-pill status-${row.role === "admin" || row.role === "province-admin" ? "admin" : "student"}`}>{row.role || "student"}</span>
                       <span className={`status-pill status-${row.followUpStatus === "needed" ? "needed" : "quiet"}`}>{row.followUpStatus || "no follow-up"}</span>
+                      {isSuperAdmin(user) ? (
+                        <select value={row.accountStatus || "active"} disabled={savingId === row.id || row.id === user.id} onChange={(event) => saveUserField(row, "accountStatus", event.target.value)}>
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="suspended">Suspended</option>
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                        </select>
+                      ) : <small>{row.accountStatus || "active"}</small>}
                     </td>
                     <td>
-                      <select value={row.accessPlan ?? "member"} disabled={savingId === row.id} onChange={(event) => saveUserField(row, "accessPlan", event.target.value)}>
+                      <select value={row.accessPlan ?? "member"} disabled={savingId === row.id || !isSuperAdmin(user)} onChange={(event) => saveUserField(row, "accessPlan", event.target.value)}>
                         <option value="">No access</option>
                         <option value="member">Member</option>
                         <option value="paid">Paid</option>
@@ -604,9 +1120,13 @@ function AdminPage({ user }) {
                       </select>
                     </td>
                     <td>
-                      <select value={row.role || "student"} disabled={savingId === row.id || row.id === user.id} onChange={(event) => saveUserField(row, "role", event.target.value)}>
-                        <option value="student">Student</option>
-                        <option value="admin">Admin</option>
+                      <select value={row.role || "student"} disabled={savingId === row.id || row.id === user.id || !isSuperAdmin(user)} onChange={(event) => saveUserField(row, "role", event.target.value)}>
+                        <option value="student">Convert</option>
+                        <option value="province-admin">Province Admin</option>
+                        <option value="assistant-admin">Assistant Admin</option>
+                        <option value="follow-up-officer">Follow-up Officer</option>
+                        <option value="data-entry-officer">Data Entry Officer</option>
+                        <option value="admin">Super Admin</option>
                       </select>
                     </td>
                     <td>
@@ -618,12 +1138,7 @@ function AdminPage({ user }) {
                       </select>
                     </td>
                     <td>
-                      <select value={row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none")} disabled={savingId === row.id} onChange={(event) => saveUserField(row, "hardcopyStatus", event.target.value)}>
-                        <option value="none">None</option>
-                        <option value="interested">Interested</option>
-                        <option value="ordered">Ordered</option>
-                        <option value="delivered">Delivered</option>
-                      </select>
+                      <input value={row.workerAssigned || ""} disabled={savingId === row.id} onChange={(event) => setRows(rows.map((item) => (item.id === row.id ? { ...item, workerAssigned: event.target.value } : item)))} onBlur={(event) => saveUserField(row, "workerAssigned", event.target.value)} placeholder="Assign worker" />
                     </td>
                     <td><strong>{row.completedDays?.length ?? 0}</strong><small>of {days.length}</small></td>
                     <td>
@@ -633,7 +1148,7 @@ function AdminPage({ user }) {
                   </tr>
                 ))}
                 {!loadingUsers && filtered.length === 0 ? (
-                  <tr><td colSpan="11"><div className="admin-empty">No users match the current filters.</div></td></tr>
+                  <tr><td colSpan="12"><div className="admin-empty">No converts match the current filters.</div></td></tr>
                 ) : null}
               </tbody>
             </table>
