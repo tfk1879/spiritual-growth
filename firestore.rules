@@ -126,5 +126,14 @@ service cloud.firestore {
       allow create: if signedIn();
       allow update, delete: if false;
     }
+
+    match /superAdminReports/{reportId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() || (
+        isProvinceAdmin()
+        && request.resource.data.reportType == "province-report"
+        && request.resource.data.provinceId == adminProvinceId()
+      );
+    }
   }
 }

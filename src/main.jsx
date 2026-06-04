@@ -18,6 +18,7 @@ import {
   getAdminInvitation,
   getCurrentUser,
   isSuperAdmin,
+  listAdminInvitations,
   listAdminRequests,
   listProvinces,
   listUsersForAdmin,
@@ -25,7 +26,9 @@ import {
   logoutUser,
   registerUser,
   saveCompletedDays,
+  saveSuperAdminEndpointReport,
   subscribeToAuth,
+  submitProvinceReportToSuperAdmin,
   updateProvince,
   updateUserProfile
 } from "./services.js";
@@ -69,6 +72,117 @@ const platformFeatures = [
   { icon: Users, title: "Spiritual Mentorship", text: "Help workers walk closely with every new believer." },
   { icon: Calendar, title: "Event Notifications", text: "Surface classes, services, and province programs." }
 ];
+
+const reportTemplateSections = [
+  "Province summary",
+  "Convert registration",
+  "Follow-up status",
+  "Study progress",
+  "Worker assignment",
+  "Hardcopy requests",
+  "Prayer needs",
+  "Admin remarks"
+];
+
+const adminAccountTypes = [
+  { value: "province-admin", label: "Province Admin", description: "Manage province converts, workers, follow-up, and reports." },
+  { value: "assistant-admin", label: "Assistant Admin", description: "Support province management and reporting." },
+  { value: "follow-up-officer", label: "Follow-up Officer", description: "Track convert care, calls, visits, and prayer needs." },
+  { value: "data-entry-officer", label: "Data Entry Officer", description: "Maintain registration and follow-up records." }
+];
+
+function normalizeHardcopyStatus(row) {
+  return row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none");
+}
+
+function countBy(items, resolver) {
+  return items.reduce((counts, item) => {
+    const key = resolver(item) || "not-recorded";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function buildProvinceReport(province, provinceRows) {
+  const completedLessons = provinceRows.reduce((sum, row) => sum + (row.completedDays?.length ?? 0), 0);
+  const activeStudents = provinceRows.filter((row) => (row.completedDays?.length ?? 0) > 0).length;
+  const totalPossibleLessons = provinceRows.length * days.length;
+  const completionRate = totalPossibleLessons ? Math.round((completedLessons / totalPossibleLessons) * 100) : 0;
+  const assignedWorkers = provinceRows.filter((row) => row.workerAssigned).length;
+
+  return {
+    provinceId: province.id,
+    provinceName: province.provinceName || "Unassigned province",
+    provinceCode: province.provinceCode || "",
+    stateRegion: province.stateRegion || "",
+    provinceLeader: province.provinceLeader || "",
+    provinceEmail: province.provinceEmail || "",
+    provincePhone: province.provincePhone || "",
+    status: province.status || "active",
+    totals: {
+      converts: provinceRows.length,
+      activeStudents,
+      completedLessons,
+      completionRate,
+      assignedWorkers,
+      unassignedWorkers: provinceRows.length - assignedWorkers,
+      needsFollowUp: provinceRows.filter((row) => row.followUpStatus === "needed").length,
+      contacted: provinceRows.filter((row) => row.followUpStatus === "contacted").length,
+      resolved: provinceRows.filter((row) => row.followUpStatus === "resolved").length,
+      prayerRequests: provinceRows.filter((row) => row.prayerRequest).length,
+      hardcopyRequests: provinceRows.filter((row) => normalizeHardcopyStatus(row) !== "none").length
+    },
+    breakdowns: {
+      decisions: countBy(provinceRows, (row) => row.decisionType),
+      baptism: countBy(provinceRows, (row) => row.baptismStatus),
+      followUp: countBy(provinceRows, (row) => row.followUpStatus || "none"),
+      hardcopy: countBy(provinceRows, normalizeHardcopyStatus),
+      roles: countBy(provinceRows, (row) => row.role || "student")
+    },
+    templateSections: reportTemplateSections,
+    remarks: ""
+  };
+}
+
+function buildSuperAdminEndpointReport(provinceReports) {
+  const totals = provinceReports.reduce((summary, report) => ({
+    converts: summary.converts + report.totals.converts,
+    activeStudents: summary.activeStudents + report.totals.activeStudents,
+    completedLessons: summary.completedLessons + report.totals.completedLessons,
+    needsFollowUp: summary.needsFollowUp + report.totals.needsFollowUp,
+    hardcopyRequests: summary.hardcopyRequests + report.totals.hardcopyRequests,
+    prayerRequests: summary.prayerRequests + report.totals.prayerRequests
+  }), {
+    converts: 0,
+    activeStudents: 0,
+    completedLessons: 0,
+    needsFollowUp: 0,
+    hardcopyRequests: 0,
+    prayerRequests: 0
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    provinceCount: provinceReports.length,
+    provinceIds: provinceReports.map((report) => report.provinceId),
+    provinceNames: provinceReports.map((report) => report.provinceName),
+    totals,
+    provinces: provinceReports
+  };
+}
+
+function mergeProvinceOptions(...provinceLists) {
+  const provinceMap = new Map();
+
+  provinceLists.flat().filter(Boolean).forEach((province) => {
+    provinceMap.set(province.id, {
+      ...provinceMap.get(province.id),
+      ...province
+    });
+  });
+
+  return [...provinceMap.values()].sort((a, b) => String(a.provinceName || "").localeCompare(String(b.provinceName || "")));
+}
 
 function currentPath() {
   const path = window.location.pathname;
@@ -293,17 +407,24 @@ function AuthPage({ mode }) {
   const [selectedProvinceId, setSelectedProvinceId] = useState("");
   const invitationToken = isSignup ? new URLSearchParams(window.location.search).get("invite") || "" : "";
   const requestedProvinceId = isSignup ? new URLSearchParams(window.location.search).get("province") || "" : "";
-  const selectedProvince = provinces.find((province) => province.id === selectedProvinceId);
-  const requestsAdminAccess = ["province-admin", "assistant-admin"].includes(accountType) || Boolean(invitation);
+  const selectedProvince = provinces.find((province) => province.id === (selectedProvinceId || invitation?.provinceId || ""));
+  const requestsAdminAccess = Boolean(invitation);
 
   useEffect(() => {
     if (!isSignup) return;
-    listProvinces({ activeOnly: true }).then((items) => {
-      setProvinces(items);
-      if (requestedProvinceId && items.some((province) => province.id === requestedProvinceId)) {
+    const moduleProvinces = mergeProvinceOptions(ondoProvinces);
+    setProvinces(moduleProvinces);
+    if (requestedProvinceId && moduleProvinces.some((province) => province.id === requestedProvinceId)) {
+      setSelectedProvinceId(requestedProvinceId);
+    }
+
+    listProvinces({ activeOnly: false, includeDefaults: true }).then((items) => {
+      const mergedProvinces = mergeProvinceOptions(ondoProvinces, items);
+      setProvinces(mergedProvinces);
+      if (requestedProvinceId && mergedProvinces.some((province) => province.id === requestedProvinceId)) {
         setSelectedProvinceId(requestedProvinceId);
       }
-    }).catch(() => setProvinces([]));
+    }).catch(() => setProvinces(moduleProvinces));
   }, [isSignup, requestedProvinceId]);
 
   useEffect(() => {
@@ -414,8 +535,6 @@ function AuthPage({ mode }) {
                 <select value={accountType} onChange={(event) => setAccountType(event.target.value)} required>
                   <option value="member">Member</option>
                   <option value="worker">Worker</option>
-                  <option value="province-admin">Province Admin</option>
-                  <option value="assistant-admin">Assistant Admin</option>
                 </select>
               </label>
             ) : null}
@@ -438,7 +557,7 @@ function AuthPage({ mode }) {
                 {requestsAdminAccess ? <label><span>Province Code</span><input name="state" value={selectedProvince?.provinceCode || ""} readOnly required /></label> : <label><span>State</span><input name="state" type="text" autoComplete="address-level1" required /></label>}
                 {requestsAdminAccess ? <label><span>Province Location</span><input name="parish" value={selectedProvince?.stateRegion || ""} readOnly required /></label> : <label><span>Parish/Branch</span><input name="parish" type="text" required /></label>}
                 {requestsAdminAccess ? <label><span>Position/Role</span><input name="ministryPosition" type="text" required /></label> : <label><span>Date of Conversion</span><input name="conversionDate" type="date" /></label>}
-                {requestsAdminAccess ? <label><span>Requested Role</span><select name="requestedRole" defaultValue={accountType}><option value="province-admin">Province Admin</option><option value="assistant-admin">Assistant Admin</option></select></label> : <label><span>Baptism Status</span><select name="baptismStatus"><option value="not-recorded">Not recorded</option><option value="not-baptized">Not baptized</option><option value="scheduled">Scheduled</option><option value="baptized">Baptized</option></select></label>}
+                {requestsAdminAccess ? <input name="requestedRole" type="hidden" value={invitation?.roleType || "province-admin"} /> : <label><span>Baptism Status</span><select name="baptismStatus"><option value="not-recorded">Not recorded</option><option value="not-baptized">Not baptized</option><option value="scheduled">Scheduled</option><option value="baptized">Baptized</option></select></label>}
                 {requestsAdminAccess ? <label><span>Parish/Branch</span><input name="officeAddress" type="text" required /></label> : <label><span>Invited By <em>Optional</em></span><input name="invitedBy" type="text" /></label>}
                 {requestsAdminAccess ? <label><span>Years of Service</span><input name="yearsOfService" type="number" min="0" required /></label> : <label><span>Worker Assigned <em>Optional</em></span><input name="workerAssigned" type="text" /></label>}
                 {requestsAdminAccess ? <label><span>ID Card Upload</span><input name="idCard" type="file" accept="image/*,.pdf" required /></label> : null}
@@ -452,7 +571,7 @@ function AuthPage({ mode }) {
               </>
             ) : null}
           </div>
-          <p className="form-note">{isSignup && requestsAdminAccess ? "Admin access remains pending until a Super Admin reviews and approves your request." : isSignup ? "Your account helps save study progress and continue from your dashboard." : "Use the email and password from signup."}</p>
+          <p className="form-note">{isSignup && requestsAdminAccess ? "This admin account was onboarded by the Super Admin. Create your password to activate it." : isSignup ? "Your account helps save study progress and continue from your dashboard." : "Use the email and password from signup."}</p>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <button className="button auth-submit" type="submit" disabled={busy}>{busy ? "Please wait..." : isSignup ? "Create Account" : "Login"}</button>
         </form>
@@ -485,7 +604,7 @@ function StudiesPage({ user }) {
   return (
     <div className="site-shell">
       <Header active="studies" user={user} />
-      <main className="page-stack">
+      <main className="page-stack admin-dashboard-stack">
         <section className="page-hero compact-hero">
           <p className="eyebrow">Weekly Studies</p>
           <h1>Choose a classroom and grow one week at a time.</h1>
@@ -649,6 +768,8 @@ function AdminPage({ user }) {
   const [rows, setRows] = useState([]);
   const [provinces, setProvinces] = useState([]);
   const [adminRequests, setAdminRequests] = useState([]);
+  const [adminInvitations, setAdminInvitations] = useState([]);
+  const [adminInviteResult, setAdminInviteResult] = useState(null);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [accessFilter, setAccessFilter] = useState("all");
@@ -661,6 +782,8 @@ function AdminPage({ user }) {
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [setupStep, setSetupStep] = useState(1);
   const [setupComplete, setSetupComplete] = useState(false);
+  const [provinceActivationReport, setProvinceActivationReport] = useState(null);
+  const [adminView, setAdminView] = useState("register");
   const [loadingUsers, setLoadingUsers] = useState(true);
 
   useEffect(() => {
@@ -675,7 +798,14 @@ function AdminPage({ user }) {
 
   useEffect(() => {
     if (!user || !canUseAdminTools(user)) return;
-    listProvinces({ includeDefaults: !isSuperAdmin(user) }).then(setProvinces).catch((error) => setMessage(error.message));
+    const websiteProvinces = mergeProvinceOptions(ondoProvinces);
+    setProvinces(websiteProvinces);
+    listProvinces({ includeDefaults: true })
+      .then((items) => setProvinces(mergeProvinceOptions(ondoProvinces, items)))
+      .catch((error) => {
+        setProvinces(websiteProvinces);
+        setMessage(error.message);
+      });
   }, [user]);
 
   useEffect(() => {
@@ -683,20 +813,32 @@ function AdminPage({ user }) {
     listAdminRequests().then(setAdminRequests).catch((error) => setMessage(error.message));
   }, [user]);
 
+  useEffect(() => {
+    if (!user || !isSuperAdmin(user)) return;
+    listAdminInvitations().then(setAdminInvitations).catch((error) => setMessage(error.message));
+  }, [user]);
+
   const provinceById = useMemo(() => Object.fromEntries(provinces.map((province) => [province.id, province])), [provinces]);
 
   async function reloadProvinces() {
-    setProvinces(await listProvinces({ includeDefaults: !isSuperAdmin(user) }));
+    const items = await listProvinces({ includeDefaults: true });
+    setProvinces(mergeProvinceOptions(ondoProvinces, items));
   }
 
   async function addOndoProvinces() {
     if (!isSuperAdmin(user)) return;
     setMessage("");
     try {
-      setProvinces(await ensureDefaultOndoProvinces());
-      setMessage("Ondo provinces added to the province register.");
+      const onboardedProvinces = mergeProvinceOptions(ondoProvinces, await ensureDefaultOndoProvinces(user));
+      const activeSuperAdminProvinces = onboardedProvinces.filter((province) => province.onboardedUnder === "super-admin" && province.status === "active");
+      setProvinces(onboardedProvinces);
+      setProvinceActivationReport({
+        count: activeSuperAdminProvinces.length,
+        names: activeSuperAdminProvinces.map((province) => province.provinceName)
+      });
+      setMessage("All onboarding provinces have been activated and reported to the super admin.");
     } catch (error) {
-      setMessage(error.message || "Unable to add Ondo provinces.");
+      setMessage(error.message || "Unable to onboard Ondo provinces.");
     }
   }
 
@@ -735,7 +877,7 @@ function AdminPage({ user }) {
     }
 
     try {
-      const province = await createProvince(provincePayload);
+      const province = await createProvince(provincePayload, user);
       await createAdminInvitation({ ...adminPayload, provinceId: province.id }, user);
       await reloadProvinces();
       setSetupStep(4);
@@ -751,6 +893,49 @@ function AdminPage({ user }) {
 
   async function reloadAdminRequests() {
     if (isSuperAdmin(user)) setAdminRequests(await listAdminRequests());
+  }
+
+  async function reloadAdminInvitations() {
+    if (isSuperAdmin(user)) setAdminInvitations(await listAdminInvitations());
+  }
+
+  async function onboardAdminAccount(event) {
+    event.preventDefault();
+    if (!isSuperAdmin(user)) return;
+    setMessage("");
+    setAdminInviteResult(null);
+    setSavingId("admin-onboarding");
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      fullName: String(form.get("fullName") ?? "").trim(),
+      email: String(form.get("email") ?? "").trim(),
+      phone: String(form.get("phone") ?? "").trim(),
+      gender: String(form.get("gender") ?? "").trim(),
+      username: String(form.get("username") ?? "").trim(),
+      roleType: String(form.get("roleType") ?? "province-admin").trim(),
+      provinceId: String(form.get("provinceId") ?? "").trim(),
+      accessLevel: String(form.get("accessLevel") ?? "standard").trim(),
+      accountStatus: "pending-verification"
+    };
+
+    if (!payload.fullName || !payload.email || !payload.phone || !payload.username || !payload.roleType || !payload.provinceId) {
+      setMessage("Full name, email, phone, username, role, and province are required to onboard an admin.");
+      setSavingId("");
+      return;
+    }
+
+    try {
+      const invitation = await createAdminInvitation(payload, user);
+      const activationLink = `${window.location.origin}/signup.html?invite=${invitation.id}`;
+      setAdminInviteResult({ ...invitation, activationLink });
+      await reloadAdminInvitations();
+      event.currentTarget.reset();
+      setMessage("Admin account type onboarded. Send the activation link to the admin.");
+    } catch (error) {
+      setMessage(error.message || "Unable to onboard this admin account.");
+    } finally {
+      setSavingId("");
+    }
   }
 
   async function saveProvince(event) {
@@ -780,7 +965,7 @@ function AdminPage({ user }) {
         await updateProvince(editingProvinceId, payload);
         setMessage("Province updated.");
       } else {
-        await createProvince(payload);
+        await createProvince(payload, user);
         event.currentTarget.reset();
         setMessage("Province created.");
       }
@@ -874,6 +1059,67 @@ function AdminPage({ user }) {
     URL.revokeObjectURL(url);
   }
 
+  function exportProvinceReports() {
+    const columns = ["provinceName", "provinceCode", "stateRegion", "status", "converts", "activeStudents", "completedLessons", "completionRate", "needsFollowUp", "contacted", "resolved", "assignedWorkers", "unassignedWorkers", "hardcopyRequests", "prayerRequests"];
+    const values = provinceReports.map((report) => ({
+      provinceName: report.provinceName,
+      provinceCode: report.provinceCode,
+      stateRegion: report.stateRegion,
+      status: report.status,
+      converts: report.totals.converts,
+      activeStudents: report.totals.activeStudents,
+      completedLessons: report.totals.completedLessons,
+      completionRate: `${report.totals.completionRate}%`,
+      needsFollowUp: report.totals.needsFollowUp,
+      contacted: report.totals.contacted,
+      resolved: report.totals.resolved,
+      assignedWorkers: report.totals.assignedWorkers,
+      unassignedWorkers: report.totals.unassignedWorkers,
+      hardcopyRequests: report.totals.hardcopyRequests,
+      prayerRequests: report.totals.prayerRequests
+    }));
+    const csv = [columns.join(","), ...values.map((row) => columns.map((column) => `"${String(row[column]).replaceAll('"', '""')}"`).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `province-reports-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function submitEndpointReport() {
+    if (!isSuperAdmin(user)) return;
+    setSavingId("endpoint-report");
+    setMessage("");
+    try {
+      await saveSuperAdminEndpointReport(endpointReport, user);
+      setMessage("Endpoint report saved to the Super Admin report center.");
+    } catch (error) {
+      setMessage(error.message || "Unable to save endpoint report.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  async function submitProvinceAdminReport() {
+    if (isSuperAdmin(user)) return;
+    const provinceReport = provinceReports[0];
+    if (!provinceReport) {
+      setMessage("No province report is available to submit.");
+      return;
+    }
+    setSavingId("province-report");
+    setMessage("");
+    try {
+      await submitProvinceReportToSuperAdmin(provinceReport, user);
+      setMessage("Province report submitted to the Super Admin endpoint.");
+    } catch (error) {
+      setMessage(error.message || "Unable to submit this province report.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
   const filtered = useMemo(() => rows.filter((row) => {
     const searchText = `${row.name} ${row.email} ${row.phone} ${row.gender} ${row.decisionType} ${provinceById[row.provinceId]?.provinceName} ${row.state} ${row.parish} ${row.invitedBy} ${row.workerAssigned} ${row.occupation} ${row.homeAddress} ${row.nearestBusStop} ${row.prayerRequest} ${row.role} ${row.accessPlan} ${row.followUpStatus} ${row.hardcopyStatus}`.toLowerCase();
     const hardcopyStatus = row.hardcopyStatus || (row.hardcopyInterest ? "interested" : "none");
@@ -889,6 +1135,16 @@ function AdminPage({ user }) {
   const needsFollowUp = rows.filter((row) => row.followUpStatus === "needed").length;
   const activeStudents = rows.filter((row) => (row.completedDays?.length ?? 0) > 0).length;
   const selectedProvince = provinces.find((province) => province.id === editingProvinceId);
+  const provinceReports = useMemo(() => {
+    const visibleProvinces = isSuperAdmin(user)
+      ? provinces
+      : provinces.filter((province) => province.id === user?.provinceId);
+    return visibleProvinces.map((province) => buildProvinceReport(
+      province,
+      rows.filter((row) => (row.provinceId || "") === province.id)
+    ));
+  }, [provinces, rows, user]);
+  const endpointReport = useMemo(() => buildSuperAdminEndpointReport(provinceReports), [provinceReports]);
 
   if (!user) return <AuthPage mode="login" />;
   if (!canUseAdminTools(user)) {
@@ -904,11 +1160,11 @@ function AdminPage({ user }) {
     <div className="site-shell">
       <Header user={user} active="admin" />
       <main className="page-stack">
-        <section className="dashboard-hero">
+        <section className={isSuperAdmin(user) ? "dashboard-hero cpanel-hero" : "dashboard-hero"}>
           <div>
             <p className="eyebrow">{isSuperAdmin(user) ? "Super Admin Dashboard" : "Province Dashboard"}</p>
-            <h1>{isSuperAdmin(user) ? "Monitor provinces and converts." : "Manage your province converts."}</h1>
-            <p>{isSuperAdmin(user) ? "Create provinces, assign province admins, transfer converts, and review platform-wide activity." : "Register follow-up details, assign workers, and report on converts in your assigned province."}</p>
+            <h1>{isSuperAdmin(user) ? "Control Panel" : "Manage your province converts."}</h1>
+            <p>{isSuperAdmin(user) ? "Manage provinces, approvals, disciples, workers, access, and reports from one console." : "Register follow-up details, assign workers, and report on converts in your assigned province."}</p>
           </div>
           <div className="completion-meter"><ShieldCheck size={32} /><span>{isSuperAdmin(user) ? "Super Admin" : provinceById[user.provinceId]?.provinceName || "Province Admin"}</span></div>
         </section>
@@ -920,33 +1176,67 @@ function AdminPage({ user }) {
           <article className="progress-card"><strong>{needsFollowUp}</strong><span>Need follow-up</span></article>
           <article className="progress-card"><strong>{rows.filter((row) => row.role === "province-admin").length}</strong><span>Province admins</span></article>
         </section>
-        <section className="admin-action-grid" aria-label="Admin quick actions">
-          <button type="button" onClick={() => { setFollowUpFilter("needed"); setRoleFilter("all"); setAccessFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
-            <strong>Follow up</strong>
-            <span>Show students marked as needing care or contact.</span>
+        <section className={isSuperAdmin(user) ? "admin-action-grid cpanel-grid" : "admin-action-grid"} aria-label="Admin quick actions">
+          {isSuperAdmin(user) ? (
+            <button className={adminView === "provinces" ? "is-active" : ""} type="button" onClick={() => setAdminView("provinces")}>
+              <Building2 size={26} />
+              <strong>Provinces</strong>
+              <span>Onboard and activate province records.</span>
+            </button>
+          ) : null}
+          {isSuperAdmin(user) ? (
+            <button className={adminView === "approvals" ? "is-active" : ""} type="button" onClick={() => setAdminView("approvals")}>
+              <ShieldCheck size={26} />
+              <strong>Approvals</strong>
+              <span>Review admin applications.</span>
+            </button>
+          ) : null}
+          {isSuperAdmin(user) ? (
+            <button className={adminView === "admins" ? "is-active" : ""} type="button" onClick={() => setAdminView("admins")}>
+              <UserCheck size={26} />
+              <strong>Admin onboarding</strong>
+              <span>Create role-based admin activation links.</span>
+            </button>
+          ) : null}
+          <button className={adminView === "register" ? "is-active" : ""} type="button" onClick={() => { setAdminView("register"); setRoleFilter("all"); setAccessFilter("all"); setProvinceFilter("all"); setFollowUpFilter("all"); setHardcopyFilter("all"); setQuery(""); }}>
+            <Users size={26} />
+            <strong>Disciple register</strong>
+            <span>Search, assign, and export converts.</span>
           </button>
-          <button type="button" onClick={() => { setRoleFilter("province-admin"); setAccessFilter("all"); setFollowUpFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
-            <strong>Province admins</strong>
-            <span>Review people assigned to administer province records.</span>
+          <button className={adminView === "followup" ? "is-active" : ""} type="button" onClick={() => { setAdminView("followup"); setFollowUpFilter("needed"); setRoleFilter("all"); setAccessFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
+            <Heart size={26} />
+            <strong>Follow-up</strong>
+            <span>Open converts needing care.</span>
           </button>
-          <button type="button" onClick={() => { setRoleFilter("student"); setAccessFilter(""); setFollowUpFilter("all"); setProvinceFilter("all"); setHardcopyFilter("all"); }}>
-            <strong>No access</strong>
-            <span>Review students who cannot open member studies.</span>
+          <button className={adminView === "reports" ? "is-active" : ""} type="button" onClick={() => setAdminView("reports")}>
+            <BookOpen size={26} />
+            <strong>Reports</strong>
+            <span>{isSuperAdmin(user) ? "View endpoint and province reports." : "View your province report template."}</span>
           </button>
-          <button type="button" onClick={() => { setRoleFilter("all"); setAccessFilter("all"); setProvinceFilter("all"); setFollowUpFilter("all"); setHardcopyFilter("all"); setQuery(""); }}>
-            <strong>All converts</strong>
-            <span>Clear every filter and return to the full register.</span>
-          </button>
+          {isSuperAdmin(user) ? (
+            <button type="button" onClick={addOndoProvinces}>
+              <Calendar size={26} />
+              <strong>Activate all</strong>
+              <span>Onboard and report provinces.</span>
+            </button>
+          ) : null}
         </section>
-        {isSuperAdmin(user) ? (
+        {isSuperAdmin(user) && adminView === "provinces" ? (
           <section className="admin-panel province-panel">
             <div className="admin-section-heading">
               <div><p className="eyebrow">Province Management</p><h2>Create and assign provinces.</h2></div>
               <div className="province-card-actions">
-                <button type="button" onClick={addOndoProvinces}>Add Ondo Provinces</button>
+                <button type="button" onClick={addOndoProvinces}>Onboard All Provinces</button>
                 {editingProvinceId ? <button type="button" onClick={() => setEditingProvinceId("")}>New Province</button> : null}
               </div>
             </div>
+            {provinceActivationReport ? (
+              <div className="province-activation-report">
+                <strong>Activation report sent to Super Admin</strong>
+                <span>{provinceActivationReport.count} provinces activated.</span>
+                <p>{provinceActivationReport.names.join(", ")}</p>
+              </div>
+            ) : null}
             {provinces.length === 0 && !setupWizardOpen ? (
               <section className="province-empty-state">
                 <div className="province-empty-illustration" aria-hidden="true"><Building2 size={42} /><span /></div>
@@ -956,7 +1246,7 @@ function AdminPage({ user }) {
                 <p>Your ministry structure begins here. Set up your first province and empower leaders to manage spiritual growth, follow-up, and community engagement effectively.</p>
                 <div className="province-empty-actions">
                   <button className="button" type="button" onClick={() => { setSetupWizardOpen(true); setSetupStep(1); setSetupComplete(false); }}>Create First Province</button>
-                  <button className="button button-secondary" type="button" onClick={addOndoProvinces}>Use Ondo Province Templates</button>
+                  <button className="button button-secondary" type="button" onClick={addOndoProvinces}>Onboard Province Templates</button>
                 </div>
               </section>
             ) : setupWizardOpen ? (
@@ -1021,6 +1311,7 @@ function AdminPage({ user }) {
               {provinces.map((province) => (
                 <article className="province-card" key={province.id}>
                   <div><strong>{province.provinceName}</strong><span>{province.provinceCode} · {province.stateRegion || "No region"} · {province.status}</span></div>
+                  <small>{province.onboardedUnder === "super-admin" ? "Onboarded under Super Admin" : "Not yet onboarded under Super Admin"}</small>
                   <div className="province-card-actions">
                     <button type="button" onClick={() => setEditingProvinceId(province.id)}>Edit</button>
                     <button type="button" onClick={() => removeProvince(province.id)}>Delete</button>
@@ -1032,7 +1323,7 @@ function AdminPage({ user }) {
             )}
           </section>
         ) : null}
-        {isSuperAdmin(user) ? (
+        {isSuperAdmin(user) && adminView === "approvals" ? (
           <section className="admin-panel province-panel">
             <div className="admin-section-heading">
               <div><p className="eyebrow">Admin Approval Queue</p><h2>Review province admin applications.</h2></div>
@@ -1056,10 +1347,133 @@ function AdminPage({ user }) {
             </div>
           </section>
         ) : null}
-        <section className="admin-panel">
+        {isSuperAdmin(user) && adminView === "admins" ? (
+          <section className="admin-panel province-panel">
+            <div className="admin-section-heading">
+              <div>
+                <p className="eyebrow">Admin Account Onboarding</p>
+                <h2>Onboard admin account types from Super Admin.</h2>
+              </div>
+            </div>
+            {message ? <p className={message.startsWith("Admin account") ? "form-success" : "form-error"}>{message}</p> : null}
+            <form className="province-form" onSubmit={onboardAdminAccount}>
+              <label><span>Full Name</span><input name="fullName" required /></label>
+              <label><span>Email</span><input name="email" type="email" required /></label>
+              <label><span>Phone Number</span><input name="phone" type="tel" required /></label>
+              <label><span>Username</span><input name="username" required /></label>
+              <label><span>Gender</span><select name="gender"><option value="">Not recorded</option><option value="female">Female</option><option value="male">Male</option></select></label>
+              <label><span>Admin Account Type</span><select name="roleType" required>{adminAccountTypes.map((type) => <option value={type.value} key={type.value}>{type.label}</option>)}</select></label>
+              <label><span>Province</span><select name="provinceId" required><option value="">Select province</option>{provinces.map((province) => <option value={province.id} key={province.id}>{province.provinceName}</option>)}</select></label>
+              <label><span>Access Level</span><select name="accessLevel" defaultValue="standard"><option value="standard">Standard</option><option value="reporting">Reporting only</option><option value="follow-up">Follow-up only</option></select></label>
+              <button className="button" type="submit" disabled={savingId === "admin-onboarding"}>{savingId === "admin-onboarding" ? "Creating..." : "Create Activation Link"}</button>
+            </form>
+            {adminInviteResult ? (
+              <div className="invite-result">
+                <strong>Admin activation link ready</strong>
+                <span>{adminInviteResult.activationLink}</span>
+                <small>Username: {adminInviteResult.username || "Not recorded"} | Role: {adminInviteResult.roleType?.replaceAll("-", " ")}</small>
+                <small>The invited admin will open this link and create their own password.</small>
+              </div>
+            ) : null}
+            <div className="admin-role-grid">
+              {adminAccountTypes.map((type) => (
+                <article key={type.value}>
+                  <strong>{type.label}</strong>
+                  <span>{type.description}</span>
+                </article>
+              ))}
+            </div>
+            <div className="province-list">
+              {adminInvitations.map((invite) => (
+                <article className="province-card" key={invite.id}>
+                  <div>
+                    <strong>{invite.fullName || invite.email}</strong>
+                    <span>{invite.username || "No username"} | {invite.roleType?.replaceAll("-", " ")} | {provinceById[invite.provinceId]?.provinceName || "No province"}</span>
+                  </div>
+                  <small>{invite.status || "pending"}</small>
+                  <small>{invite.email}</small>
+                </article>
+              ))}
+              {adminInvitations.length === 0 ? <p className="admin-result-count">No admin activation invitations have been created yet.</p> : null}
+            </div>
+          </section>
+        ) : null}
+        {adminView === "reports" ? (
+          <section className="admin-panel province-panel report-panel">
+            <div className="admin-section-heading">
+              <div>
+                <p className="eyebrow">{isSuperAdmin(user) ? "Super Admin Endpoint Report" : "Province Report Template"}</p>
+                <h2>{isSuperAdmin(user) ? "All province reports in one endpoint." : `${provinceById[user.provinceId]?.provinceName || "Assigned province"} report template.`}</h2>
+              </div>
+              <div className="province-card-actions">
+                <button type="button" onClick={exportProvinceReports}>Export Reports CSV</button>
+                {isSuperAdmin(user) ? <button type="button" disabled={savingId === "endpoint-report"} onClick={submitEndpointReport}>{savingId === "endpoint-report" ? "Saving..." : "Send Endpoint Report"}</button> : <button type="button" disabled={savingId === "province-report"} onClick={submitProvinceAdminReport}>{savingId === "province-report" ? "Submitting..." : "Submit to Super Admin"}</button>}
+              </div>
+            </div>
+            {message ? <p className={message.includes("report") || message.includes("Report") ? "form-success" : "form-error"}>{message}</p> : null}
+            {isSuperAdmin(user) ? (
+              <div className="report-summary-grid">
+                <article><strong>{endpointReport.provinceCount}</strong><span>Provinces reporting</span></article>
+                <article><strong>{endpointReport.totals.converts}</strong><span>Total converts</span></article>
+                <article><strong>{endpointReport.totals.activeStudents}</strong><span>Active students</span></article>
+                <article><strong>{endpointReport.totals.needsFollowUp}</strong><span>Need follow-up</span></article>
+                <article><strong>{endpointReport.totals.completedLessons}</strong><span>Completed lessons</span></article>
+                <article><strong>{endpointReport.totals.prayerRequests}</strong><span>Prayer requests</span></article>
+              </div>
+            ) : null}
+            <div className="report-template-card">
+              <div>
+                <p className="eyebrow">Full Report Template</p>
+                <h3>Standard province reporting sections</h3>
+              </div>
+              <div className="report-template-grid">
+                {reportTemplateSections.map((section) => <span key={section}>{section}</span>)}
+              </div>
+            </div>
+            <div className="province-report-grid">
+              {provinceReports.map((report) => (
+                <article className="province-report-card" key={report.provinceId}>
+                  <header>
+                    <div>
+                      <p className="eyebrow">{report.provinceCode || "Province"}</p>
+                      <h3>{report.provinceName}</h3>
+                      <span>{report.stateRegion || "No region"} | {report.status}</span>
+                    </div>
+                    <strong>{report.totals.completionRate}%</strong>
+                  </header>
+                  <div className="report-metric-row">
+                    <span><strong>{report.totals.converts}</strong> Converts</span>
+                    <span><strong>{report.totals.needsFollowUp}</strong> Follow-up</span>
+                    <span><strong>{report.totals.assignedWorkers}</strong> Assigned</span>
+                    <span><strong>{report.totals.hardcopyRequests}</strong> Hardcopy</span>
+                  </div>
+                  <div className="report-breakdown-grid">
+                    <div><strong>Decision</strong>{Object.entries(report.breakdowns.decisions).map(([label, count]) => <span key={label}>{label}: {count}</span>)}</div>
+                    <div><strong>Baptism</strong>{Object.entries(report.breakdowns.baptism).map(([label, count]) => <span key={label}>{label}: {count}</span>)}</div>
+                    <div><strong>Follow-up</strong>{Object.entries(report.breakdowns.followUp).map(([label, count]) => <span key={label}>{label}: {count}</span>)}</div>
+                    <div><strong>Hardcopy</strong>{Object.entries(report.breakdowns.hardcopy).map(([label, count]) => <span key={label}>{label}: {count}</span>)}</div>
+                  </div>
+                  <footer>
+                    <span>Leader: {report.provinceLeader || "Not recorded"}</span>
+                    <span>Contact: {report.provinceEmail || report.provincePhone || "Not recorded"}</span>
+                  </footer>
+                </article>
+              ))}
+              {provinceReports.length === 0 ? <p className="admin-result-count">No province report is available yet.</p> : null}
+            </div>
+          </section>
+        ) : null}
+        {adminView === "register" || adminView === "followup" ? (
+        <section className="admin-panel admin-register-panel">
           <div className="admin-toolbar">
-            <label className="admin-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search converts, provinces, workers" /></label>
-            <button className="button button-secondary" type="button" onClick={exportUsers}>Export CSV</button>
+            <div className="admin-register-heading">
+              <p className="eyebrow">Disciple Register</p>
+              <h2>Converts, workers, and assignments</h2>
+            </div>
+            <div className="admin-toolbar-actions">
+              <label className="admin-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search converts, provinces, workers" /></label>
+              <button className="button button-secondary" type="button" onClick={exportUsers}>Export CSV</button>
+            </div>
           </div>
           <div className="admin-filters" aria-label="User filters">
             <label><span>Role</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All roles</option><option value="student">Converts</option>{isSuperAdmin(user) ? <option value="province-admin">Province Admins</option> : null}{isSuperAdmin(user) ? <option value="assistant-admin">Assistant Admins</option> : null}{isSuperAdmin(user) ? <option value="follow-up-officer">Follow-up Officers</option> : null}{isSuperAdmin(user) ? <option value="data-entry-officer">Data Entry Officers</option> : null}<option value="admin">Super Admins</option></select></label>
@@ -1154,6 +1568,7 @@ function AdminPage({ user }) {
             </table>
           </div>
         </section>
+        ) : null}
       </main>
     </div>
   );

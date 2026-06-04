@@ -154,8 +154,7 @@ export async function registerUser({
     const inviteToken = String(invitationToken).trim();
     const invitation = inviteToken ? await getAdminInvitation(inviteToken) : null;
     const normalizedEmail = normalizeEmail(email);
-    const adminAccountTypes = ["province-admin", "assistant-admin"];
-    const isAdminRequest = adminAccountTypes.includes(accountType);
+    const isAdminRequest = false;
 
     if (invitation && (invitation.status !== "pending" || normalizeEmail(invitation.email) !== normalizedEmail)) {
       return { ok: false, message: "This invitation is invalid, expired, or assigned to another email." };
@@ -475,18 +474,52 @@ export async function listProvinces({ activeOnly = false, includeDefaults = true
     .sort((a, b) => String(a.provinceName || "").localeCompare(String(b.provinceName || "")));
 }
 
-export async function ensureDefaultOndoProvinces() {
+export async function ensureDefaultOndoProvinces(currentUser = null) {
+  const superAdminId = currentUser?.id || "";
+  const superAdminEmail = currentUser?.email || "";
+  const activatedAt = serverTimestamp();
+
   await Promise.all(defaultOndoProvinces.map((province) => setDoc(doc(db, "provinces", province.id), {
     ...province,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    status: "active",
+    activationStatus: "active",
+    onboardedBy: superAdminId,
+    onboardedByEmail: superAdminEmail,
+    onboardedUnder: "super-admin",
+    supervisionLevel: "super-admin",
+    activatedBy: superAdminId,
+    activatedByEmail: superAdminEmail,
+    activatedAt,
+    createdAt: activatedAt,
+    updatedAt: activatedAt
   }, { merge: true })));
+  if (superAdminId) {
+    await setDoc(doc(db, "superAdminReports", `province-onboarding-${superAdminId}`), {
+      reportType: "province-onboarding",
+      title: "Province Onboarding Activation Report",
+      provinceCount: defaultOndoProvinces.length,
+      provinceIds: defaultOndoProvinces.map((province) => province.id),
+      provinceNames: defaultOndoProvinces.map((province) => province.provinceName),
+      status: "completed",
+      submittedTo: superAdminId,
+      submittedToEmail: superAdminEmail,
+      createdBy: superAdminId,
+      createdAt: activatedAt,
+      updatedAt: activatedAt
+    }, { merge: true });
+    await addActivityLog({
+      adminId: superAdminId,
+      activity: `Activated and reported ${defaultOndoProvinces.length} onboarded provinces to super admin`,
+      provinceId: ""
+    });
+  }
   return listProvinces();
 }
 
-export async function createProvince(data) {
+export async function createProvince(data, currentUser = null) {
   const provinceName = String(data.provinceName || "").trim();
   const provinceCode = String(data.provinceCode || "").trim().toUpperCase();
+  const superAdminId = currentUser?.id || "";
   const payload = {
     provinceName,
     provinceCode,
@@ -497,10 +530,21 @@ export async function createProvince(data) {
     provinceLeader: String(data.provinceLeader || "").trim(),
     contactInfo: String(data.contactInfo || "").trim(),
     status: data.status || "active",
+    onboardedBy: superAdminId,
+    onboardedByEmail: currentUser?.email || "",
+    onboardedUnder: superAdminId ? "super-admin" : "",
+    supervisionLevel: superAdminId ? "super-admin" : "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
   const reference = await addDoc(collection(db, "provinces"), payload);
+  if (superAdminId) {
+    await addActivityLog({
+      adminId: superAdminId,
+      activity: `Created province ${provinceName} under super admin`,
+      provinceId: reference.id
+    });
+  }
   return { id: reference.id, ...payload };
 }
 
@@ -521,4 +565,48 @@ export async function updateProvince(provinceId, data) {
 
 export async function deleteProvince(provinceId) {
   await deleteDoc(doc(db, "provinces", provinceId));
+}
+
+export async function saveSuperAdminEndpointReport(report, currentUser = null) {
+  const reportId = `province-endpoint-${new Date().toISOString().slice(0, 10)}`;
+  await setDoc(doc(db, "superAdminReports", reportId), {
+    ...report,
+    reportType: "province-endpoint",
+    title: "Province Endpoint Report",
+    submittedTo: currentUser?.id || "",
+    submittedToEmail: currentUser?.email || "",
+    createdBy: currentUser?.id || "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  await addActivityLog({
+    adminId: currentUser?.id || "",
+    activity: `Generated endpoint report for ${report.provinceCount || 0} provinces`,
+    provinceId: ""
+  });
+  return { id: reportId, ...report };
+}
+
+export async function submitProvinceReportToSuperAdmin(report, currentUser = null) {
+  const provinceId = report.provinceId || currentUser?.provinceId || "unassigned";
+  const reportId = `province-report-${provinceId}-${new Date().toISOString().slice(0, 10)}`;
+  await setDoc(doc(db, "superAdminReports", reportId), {
+    reportType: "province-report",
+    title: `${report.provinceName || "Province"} Report`,
+    provinceId,
+    provinceName: report.provinceName || "",
+    submittedBy: currentUser?.id || "",
+    submittedByEmail: currentUser?.email || "",
+    submittedTo: "super-admin",
+    report,
+    status: "submitted",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  await addActivityLog({
+    adminId: currentUser?.id || "",
+    activity: `Submitted report for ${report.provinceName || provinceId} to super admin`,
+    provinceId
+  });
+  return { id: reportId, report };
 }
